@@ -40,7 +40,22 @@ if (manifest.id !== addonId) {
 
 console.log(`[build-addon] Building ${addonId}@${manifest.version}...`);
 if (fs.existsSync(path.join(addonDir, "package.json"))) {
-  execSync("npm install --no-audit --no-fund", { cwd: addonDir, stdio: "inherit" });
+  // `npm ci` — not `npm install`. The submitted lockfile is what adjudication
+  // stage 4 inspected; `npm install` re-resolves the declared ranges and can
+  // install a version newer than the one that was reviewed, which makes the
+  // lockfile gate decorative. `ci` fails outright if the lockfile and
+  // package.json disagree, which is the behaviour we want here.
+  //
+  // `--ignore-scripts` blocks dependency install hooks. This is hygiene, not
+  // closure: `npm run build` on the next line runs the addon's own build, so
+  // arbitrary code still executes. It removes the quietest path, not the path.
+  //
+  // `--registry` is explicit so the result does not depend on ambient npm
+  // config on whatever machine or runner this happens to run on.
+  execSync("npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/", {
+    cwd: addonDir,
+    stdio: "inherit",
+  });
   execSync("npm run build", { cwd: addonDir, stdio: "inherit" });
 }
 

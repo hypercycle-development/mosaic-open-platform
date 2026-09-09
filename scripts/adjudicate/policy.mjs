@@ -64,6 +64,22 @@ export const SENSITIVE_PATH_PATTERNS = [
   { re: /(^|\/)\.github\//, why: "CI / release workflows" },
   { re: /(^|\/)scripts\//, why: "build / signing / adjudication tooling" },
   { re: /^package(-lock)?\.json$/, why: "root repo tooling manifest" },
+
+  // Package-manager configuration, anywhere in the patch — including inside
+  // the addon's own directory, which is why these are here and not in the
+  // "outside addons/<id>/" check.
+  //
+  // `npm install` reads an `.npmrc` from the package directory it runs in, so
+  // a submitted `.npmrc` re-points the registry — or supplies a token — for
+  // the install that builds the addon we are about to sign. The dependency
+  // ranges in package.json would still read as ordinary registry ranges while
+  // resolving to something else entirely, which defeats reviewing the
+  // dependencies at all. The yarn/pnpm/bun equivalents do the same job.
+  { re: /(^|\/)\.npmrc$/, why: "npm config — can re-point the registry for the build" },
+  { re: /(^|\/)\.yarnrc(\.yml)?$/, why: "yarn config — can re-point the registry for the build" },
+  { re: /(^|\/)pnpm-workspace\.yaml$/, why: "pnpm workspace config" },
+  { re: /(^|\/)\.pnpmfile\.cjs$/, why: "pnpm hook file — executes during install" },
+  { re: /(^|\/)bunfig\.toml$/, why: "bun config — can re-point the registry for the build" },
 ];
 
 // The complete set of `scripts` keys an addon's package.json may declare.
@@ -123,6 +139,16 @@ export const INSTALL_LIFECYCLE_SCRIPTS = [
 // common a dependency spec as exists. The previous character class rejected it.
 export const NON_REGISTRY_DEP_RE =
   /^(git\+|git:|https?:|file:|link:|portal:|github:|npm:|workspace:|patch:|[^@\s]+\/[^@\s]+(#|$)|\.{1,2}\/|~\/|\/)/i;
+
+// A lockfile entry's `resolved` URL must be a tarball on the public registry.
+// Anchored to the host so a lookalike path cannot satisfy it, and the scheme is
+// pinned to https so a plain-http mirror is refused too.
+//
+// Deliberately narrower than NON_REGISTRY_DEP_RE's inverse: that one asks "is
+// this declared range something other than a semver range", which is a question
+// about intent. This asks "did npm actually record a URL on the registry",
+// which is a question about fact, and admits no forms beyond the one.
+export const REGISTRY_TARBALL_RE = /^https:\/\/registry\.npmjs\.org\//;
 
 // The app's own trust boundary for main-process code, mirrored. An addon whose
 // id is not here may not ship `main.entry` at all: main-process code runs
