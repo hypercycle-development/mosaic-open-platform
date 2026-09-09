@@ -36,7 +36,7 @@ import {
   PERMISSION_VOCABULARY, RESERVED_PERMISSIONS, RESERVED_IPC_NAMESPACES,
   ID_PATTERN, IPC_NAMESPACE_PATTERN, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH,
   MAX_TAB_LABEL_LENGTH, SEMVER_RE, SENSITIVE_PATH_PATTERNS,
-  ALLOWED_ADDON_SCRIPTS, INSTALL_LIFECYCLE_SCRIPTS, NON_REGISTRY_DEP_RE, SCAN_CATEGORIES, URL_RE,
+  ALLOWED_ADDON_SCRIPTS, INSTALL_LIFECYCLE_SCRIPTS, NON_REGISTRY_DEP_RE, REGISTRY_TARBALL_RE, SCAN_CATEGORIES, URL_RE,
   MAIN_ENTRY_ALLOWLIST,
 } from "./policy.mjs";
 
@@ -293,6 +293,69 @@ function main() {
     if (newDeps.length) notes.push(`Declared deps (judge legitimacy): ${newDeps.join(", ")}`);
   } else {
     notes.push("No addon package.json changes to supply-chain check.");
+  }
+
+  // ── Stage 4c: the submitted lockfile ──────────────────────────────────────
+  // The checks above gate the DECLARED RANGES. The lockfile is what actually
+  // gets installed, and until now nothing read it — a clean package.json could
+  // sit beside a lockfile resolving to a tarball on any host in the world.
+  //
+  // Three properties, none of which is a judgment call:
+  //   * every resolved entry comes from the public registry;
+  //   * every resolved entry carries an integrity hash, so the bytes are
+  //     pinned rather than merely the URL;
+  //   * the lockfile covers every declared dependency, so `npm ci` cannot fall
+  //     back to resolving a range at build time.
+  //
+  // A note, because it is the thing most likely to be misread: this gate is
+  // only worth anything because `build-addon.mjs` runs `npm ci`. Under
+  // `npm install` the lockfile is advisory and everything below describes a
+  // file the build then ignores. The two changes are one change.
+  const lockPaths = touched.filter((p) => /(^|\/)package-lock\.json$/.test(p) && p.startsWith("addons/"));
+  if (resolvedDir && lockPaths.length) {
+    const hostViol = [], integrityViol = [], coverViol = [], parseViol = [];
+    let entryCount = 0, installScripts = [];
+    for (const rel of lockPaths) {
+      const lock = readJsonMaybe(path.join(resolvedDir, rel));
+      if (!lock) {
+        if (fs.existsSync(path.join(resolvedDir, rel))) parseViol.push(`${rel}: unreadable`);
+        continue;
+      }
+      const pkgs = lock.packages;
+      if (!pkgs || typeof pkgs !== "object") {
+        // lockfileVersion 1 has no `packages` map. Refuse rather than pass a
+        // file we cannot actually inspect.
+        parseViol.push(`${rel}: no "packages" map (lockfileVersion ${lock.lockfileVersion ?? "?"}; want >= 2)`);
+        continue;
+      }
+      for (const [name, entry] of Object.entries(pkgs)) {
+        if (!entry || typeof entry !== "object" || !entry.resolved) continue;
+        entryCount++;
+        if (!REGISTRY_TARBALL_RE.test(entry.resolved)) hostViol.push(`${rel}: ${name} <- ${entry.resolved}`);
+        if (!entry.integrity) integrityViol.push(`${rel}: ${name} (no integrity)`);
+        if (entry.hasInstallScript) installScripts.push(name.replace(/^.*node_modules\//, ""));
+      }
+      // Every declared range must be present in the lockfile.
+      const pkg = readJsonMaybe(path.join(resolvedDir, rel.replace(/package-lock\.json$/, "package.json")));
+      if (pkg) {
+        for (const field of ["dependencies", "devDependencies"]) {
+          for (const name of Object.keys(pkg[field] || {})) {
+            if (!pkgs[`node_modules/${name}`]) coverViol.push(`${rel}: ${name} declared but not locked`);
+          }
+        }
+      }
+    }
+    const lockViol = [...parseViol, ...hostViol, ...integrityViol, ...coverViol];
+    gate("4c lockfile: resolves only to the public registry, fully pinned", lockViol.length === 0,
+      lockViol.length ? lockViol.join("; ") : `${entryCount} resolved entr${entryCount === 1 ? "y" : "ies"}, all registry-hosted and integrity-pinned`);
+    if (installScripts.length) {
+      notes.push(`Lockfile deps that run install scripts (judge each): ${[...new Set(installScripts)].join(", ")}`);
+    }
+  } else if (resolvedDir && pkgPaths.length) {
+    // A package.json with no lockfile beside it means `npm ci` cannot run and
+    // the build would resolve ranges afresh — the exact thing 4c exists to stop.
+    gate("4c lockfile: present alongside package.json", false,
+      "package.json submitted with no package-lock.json — nothing pins what gets installed");
   }
 
   // ── Stage 4b: build reproducibility — convention-aware ────────────────────
