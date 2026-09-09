@@ -42,9 +42,9 @@ jobs:
     # file, where an earlier draft of this workflow left it commented out.
     environment: release-signing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
@@ -127,7 +127,7 @@ jobs:
         run: node scripts/verify-registry.mjs --registry release-build/addon-registry.json
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             release-build/*.tgz
