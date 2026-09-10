@@ -24,6 +24,7 @@ export const PERMISSION_VOCABULARY = [
   "mcp:call",
   "nodes:read",
   "shell:open-external",
+  "buckets:publish",
 ];
 
 /** Named so the strings are stable, but REJECTED at install in v1. Declaring
@@ -157,6 +158,16 @@ export const REGISTRY_TARBALL_RE = /^https:\/\/registry\.npmjs\.org\//;
 // (`electron/addons/manifest.ts`), so a patch that adds `main.entry` to any
 // other addon cannot ever be published — the pipeline must say so rather than
 // leaving it to a reviewer to notice.
+// Bucket declarations, mirrored from manifest.ts. A bucket is one addon's data
+// exposed to another, so what a submission publishes and what it is willing to
+// read are reviewable facts — they belong in the diff beside its permissions.
+export const BUCKET_ID_PATTERN = /^[a-z][a-z0-9-]{1,40}$/;
+export const BUCKET_KIND_PATTERN = /^[a-z][a-z0-9-]{1,40}$/;
+export const MAX_BUCKETS_PUBLISHED = 8;
+export const MAX_BUCKET_KINDS_READ = 8;
+export const MAX_BUCKET_LABEL_LENGTH = 40;
+export const BUCKET_HISTORY_VALUES = ["all"];
+
 export const MAIN_ENTRY_ALLOWLIST = ["hyperinsight"];
 
 // ── Capability scan — produces the JUDGMENT QUEUE, never a verdict ──────────
