@@ -37,6 +37,8 @@ import {
   ID_PATTERN, IPC_NAMESPACE_PATTERN, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH,
   MAX_TAB_LABEL_LENGTH, SEMVER_RE, SENSITIVE_PATH_PATTERNS,
   ALLOWED_ADDON_SCRIPTS, INSTALL_LIFECYCLE_SCRIPTS, NON_REGISTRY_DEP_RE, REGISTRY_TARBALL_RE, SCAN_CATEGORIES, URL_RE,
+  BUCKET_ID_PATTERN, BUCKET_KIND_PATTERN, MAX_BUCKETS_PUBLISHED, MAX_BUCKET_KINDS_READ,
+  MAX_BUCKET_LABEL_LENGTH, BUCKET_HISTORY_VALUES,
   MAIN_ENTRY_ALLOWLIST,
 } from "./policy.mjs";
 
@@ -458,6 +460,65 @@ function validateManifestPolicy(m, dirName) {
       else if (!PERMISSION_VOCABULARY.includes(p)) e.push(`unknown permission "${p}"`);
     }
   }
+
+  // ── Buckets ─────────────────────────────────────────────────────────────
+  // Mirrors validateManifest's rules, so a submission that the app would
+  // refuse is refused here too rather than reaching a reviewer looking clean.
+  let publishes = [];
+  if (m.buckets !== undefined) {
+    if (typeof m.buckets !== "object" || m.buckets === null || Array.isArray(m.buckets)) {
+      e.push('"buckets" must be an object if present');
+    } else {
+      if (m.buckets.publishes !== undefined) {
+        if (!Array.isArray(m.buckets.publishes)) e.push("buckets.publishes must be an array");
+        else if (m.buckets.publishes.length > MAX_BUCKETS_PUBLISHED) {
+          e.push(`buckets.publishes may declare at most ${MAX_BUCKETS_PUBLISHED} buckets`);
+        } else {
+          const seen = new Set();
+          m.buckets.publishes.forEach((b, i) => {
+            if (typeof b !== "object" || b === null || Array.isArray(b)) { e.push(`buckets.publishes[${i}] must be an object`); return; }
+            if (typeof b.id !== "string" || !BUCKET_ID_PATTERN.test(b.id)) { e.push(`invalid buckets.publishes[${i}].id`); return; }
+            if (seen.has(b.id)) { e.push(`duplicate bucket id "${b.id}"`); return; }
+            seen.add(b.id);
+            if (typeof b.kind !== "string" || !BUCKET_KIND_PATTERN.test(b.kind)) { e.push(`invalid buckets.publishes[${i}].kind`); return; }
+            // An unknown history must FAIL, never default: a manifest asking
+            // for a NARROWER exposure must not silently be given the wider one.
+            if (b.history !== undefined && !BUCKET_HISTORY_VALUES.includes(b.history)) {
+              e.push(`unknown buckets.publishes[${i}].history ${JSON.stringify(b.history)} (only "all" is accepted)`); return;
+            }
+            if (b.label !== undefined && (typeof b.label !== "string" || b.label.length < 1 || b.label.length > MAX_BUCKET_LABEL_LENGTH)) {
+              e.push(`invalid buckets.publishes[${i}].label (1-${MAX_BUCKET_LABEL_LENGTH} chars)`); return;
+            }
+            publishes.push(b);
+          });
+        }
+      }
+      if (m.buckets.reads !== undefined) {
+        if (!Array.isArray(m.buckets.reads) || m.buckets.reads.some((k) => typeof k !== "string")) {
+          e.push("buckets.reads must be an array of strings");
+        } else if (m.buckets.reads.length > MAX_BUCKET_KINDS_READ) {
+          e.push(`buckets.reads may declare at most ${MAX_BUCKET_KINDS_READ} kinds`);
+        } else {
+          const seenKinds = new Set();
+          m.buckets.reads.forEach((k, i) => {
+            if (!BUCKET_KIND_PATTERN.test(k)) { e.push(`invalid buckets.reads[${i}]`); return; }
+            if (seenKinds.has(k)) { e.push(`duplicate bucket kind "${k}" in buckets.reads`); return; }
+            seenKinds.add(k);
+          });
+        }
+      }
+    }
+  }
+  // Both directions, so the permission and the declaration are one coherent
+  // statement rather than two a reviewer has to reconcile.
+  const perms = Array.isArray(m.permissions) ? m.permissions : [];
+  if (publishes.length > 0 && !perms.includes("buckets:publish")) {
+    e.push('buckets.publishes requires the "buckets:publish" permission');
+  }
+  if (perms.includes("buckets:publish") && publishes.length === 0) {
+    e.push('"buckets:publish" is declared but buckets.publishes is empty');
+  }
+
   return e;
 }
 
