@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "id": "fleet-manager",
+  "version": "1.0.0",
+  "name": "Fleet Manager",
+  "description": "Manage multiple HyperCycle nodes in one place: ALIVE/DEAD status, uptime, heartbeats, health tests, explorer/tilling data, and alerts.",
+  "author": "BitSempre",
+  "homepage": "https://github.com/BitSempre/Mosaic-fleet-manager",
+  "minAppVersion": "0.1.9",
+
+  "ipcNamespace": "fleet-manager",
+  "mountPoint": "tab",
+
+  "tab": {
+    "label": "Fleet Manager",
+    "icon": "Server",
+    "order": 95
+  },
+
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+
+  "permissions": [
+    "nodes:read"
+  ],
+
+  "updates": {
+    "checkMode": "manual"
+  }
+}
