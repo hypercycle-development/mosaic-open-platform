@@ -1,0 +1,176 @@
+﻿:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e5e7eb;
+  background: #0b0f14;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #0b0f14;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.fleet-app {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 35%),
+    #0b0f14;
+}
+
+.fleet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px;
+  border-bottom: 1px solid #1f2937;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.fleet-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fleet-title h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+}
+
+.fleet-header p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid #1f3b2c;
+  border-radius: 999px;
+  color: #86efac;
+  background: #0d1a14;
+  font-size: 12px;
+}
+
+.fleet-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.welcome-card,
+.info-card,
+.metric-card {
+  border: 1px solid #1f2937;
+  background: #111827;
+  border-radius: 12px;
+}
+
+.welcome-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px;
+}
+
+.icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: #172033;
+  color: #93c5fd;
+}
+
+.welcome-card h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.welcome-card p,
+.info-card p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.metric-card {
+  padding: 18px;
+}
+
+.metric-card span,
+.metric-card small {
+  display: block;
+}
+
+.metric-card span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.metric-card strong {
+  display: block;
+  margin: 10px 0 5px;
+  font-size: 24px;
+}
+
+.metric-card small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.info-card {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.info-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.info-card p + p {
+  margin-top: 8px;
+}
+
+@media (max-width: 700px) {
+  .fleet-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-content {
+    padding: 18px;
+  }
+}
