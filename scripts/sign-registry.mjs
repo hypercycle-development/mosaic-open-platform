@@ -3,7 +3,7 @@
  * Signs `addon-registry.json` with an Ed25519 private key, writing the
  * `{ keyId, signature }` envelope to `addon-registry.json.sig` (§6.7).
  *
- * This is what the real `mosaic-addons` release CI runs, reading the
+ * This is what the real `mosaic-open-platform` release CI runs, reading the
  * private key only from `secrets.ADDON_SIGNING_KEY_<keyId>` (see
  * `.github/workflows/release.yml`) — never generating key material itself.
  * For local/dev use, point `--key` at a JSON file shaped

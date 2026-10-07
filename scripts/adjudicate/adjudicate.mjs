@@ -19,7 +19,7 @@
 //
 // Options:
 //   --patch <file>        (required) the contribution, as a patch/diff file
-//   --repo <dir>          base mosaic-addons checkout to apply against
+//   --repo <dir>          base mosaic-open-platform checkout to apply against
 //                         (default: the repo this script lives in)
 //   --expect-commit <sha> assert the patch's From-hash matches this
 //   --json                also write a machine-readable report to stdout tail

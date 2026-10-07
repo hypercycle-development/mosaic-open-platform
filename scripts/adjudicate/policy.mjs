@@ -50,7 +50,7 @@ export const IPC_NAMESPACE_PATTERN = /^[a-z][a-z0-9-]{1,40}$/;
 export const MAX_NAME_LENGTH = 40;
 export const MAX_DESCRIPTION_LENGTH = 200;
 export const MAX_TAB_LABEL_LENGTH = 24;
-// Subset of node-semver — mosaic-addons has no semver dependency. Good enough
+// Subset of node-semver — mosaic-open-platform has no semver dependency. Good enough
 // to catch a malformed version; the app applies the full check at install.
 export const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 

@@ -95,7 +95,7 @@ Neither blocks the first release, because the first catalogue withdraws nothing.
 
 ### Withdrawing something
 
-Edit `withdrawn.json` in `mosaic-addons`, remove the add-on from `addons/`,
+Edit `withdrawn.json` in `mosaic-open-platform`, remove the add-on from `addons/`,
 bump the tag, publish:
 
 ```jsonc
@@ -203,7 +203,7 @@ tag catalogue-vN
 ```
 
 The app fetches
-`https://github.com/hypercycle-development/mosaic-addons/releases/latest/download/addon-registry.json`
+`https://github.com/hypercycle-development/mosaic-open-platform/releases/latest/download/addon-registry.json`
 and its `.sig`, verifies the signature against a key pinned in
 `electron/addons/signing.ts`, and only then trusts a single word of it
 (`installer.ts:100-165`).
@@ -247,7 +247,7 @@ Two committed test keys were removed that day:
 
 | Was | Repo | Status |
 |---|---|---|
-| `fixtures/test-signing-key.json` | `mosaic-addons` | Removed **before** the repo went public — disclosure prevented. |
+| `fixtures/test-signing-key.json` | `mosaic-open-platform` | Removed **before** the repo went public — disclosure prevented. |
 | `tests/addons/fixtures/test-signing-key.json` | `mosaic-companion` | Had been in **public** history since #96. Removed, but **treat that key as permanently compromised** — deletion does not unpublish it. |
 
 Neither was used by any running code; only their public halves were pinned, in
@@ -287,7 +287,7 @@ Verified end to end 2026-08-21 with an ephemeral key, since destroyed:
 
 ## 3. Configuring CI
 
-Two repository settings, both on `mosaic-addons`:
+Two repository settings, both on `mosaic-open-platform`:
 
 | Kind | Name | Value |
 |---|---|---|
@@ -317,7 +317,7 @@ than publishing something unsigned.
 
 | File | Repo | Role |
 |---|---|---|
-| `publisher-keys.json` | `mosaic-addons` | what CI verifies against before publishing |
+| `publisher-keys.json` | `mosaic-open-platform` | what CI verifies against before publishing |
 | `PRODUCTION_PUBLISHER_KEYS` in `electron/addons/signing.ts` | `mosaic-companion` | what installed apps trust |
 
 Add the new key to **both**, as its own dated entry with `retiredAt: null`.

@@ -1,7 +1,7 @@
 # Addon adjudication
 
 A process for assessing a community-contributed addon before it merges into
-`mosaic-addons`. The goal is to let **scripts make every decision a script can**
+`mosaic-open-platform`. The goal is to let **scripts make every decision a script can**
 (deterministic, repeatable, no judgment) and reserve a human/LLM for the small
 set of questions that genuinely need judgment — then, only after both pass, an
 isolated runtime test.
@@ -32,7 +32,7 @@ affects the exit code). The queue *is* the agenda for Stage 6 — nothing more.
 | 2 | Applies | `git apply --check` fails on the base checkout |
 | 3 | Manifest conformance | mirrors the app's `validateManifest` policy subset: bad id/version/namespace, or a permission that is unknown or **reserved** (`wallet:sign`, `vault:*`, …) |
 | 4 | Supply chain | **any `scripts` key in the addon's own `package.json` that is not on the allowlist** — `ALLOWED_ADDON_SCRIPTS` in `policy.mjs`, currently build, dev, test, lint, typecheck, format, clean, watch, preview; any dependency specifier that is not a plain registry range — git and tarball URLs, local and workspace paths, `github:`, bare `user/repo`, and `npm:` aliases |
-| 4b | Build reproducibility | convention-aware: if `renderer/` is gitignored build output (the mosaic-addons model), an absent bundle is correct and this instead flags that a sandboxed build (Stage 7) is required; it only *fails* when the repo tracks bundles and `src/` changed without a matching bundle update |
+| 4b | Build reproducibility | convention-aware: if `renderer/` is gitignored build output (the mosaic-open-platform model), an absent bundle is correct and this instead flags that a sandboxed build (Stage 7) is required; it only *fails* when the repo tracks bundles and `src/` changed without a matching bundle update |
 | 5 | Capability scan | never fails — emits the judgment queue |
 
 > **Stage 4 is an allowlist, and must stay one.** npm chooses which script
@@ -73,7 +73,7 @@ rest of the release tooling, not in this repository.
 ```sh
 node scripts/adjudicate/adjudicate.mjs \
   --patch <file.patch> \
-  [--repo <mosaic-addons checkout>]      # default: this repo
+  [--repo <mosaic-open-platform checkout>]      # default: this repo
   [--expect-commit <sha>]                # assert the patch's From-hash
   [--app-src <mosaic-companion checkout>]# cross-check the mirrored vocabulary
   [--json]                               # append a machine-readable report

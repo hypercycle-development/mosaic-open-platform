@@ -10,7 +10,7 @@ Do not open a public issue, discussion, or pull request for a suspected
 vulnerability.
 
 Report through GitHub private vulnerability reporting at
-<https://github.com/hypercycle-development/mosaic-addons/security/advisories/new>.
+<https://github.com/hypercycle-development/mosaic-open-platform/security/advisories/new>.
 This is the only reporting channel.
 
 Reports are received by the maintainers listed in
