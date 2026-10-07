@@ -1,6 +1,6 @@
-# mosaic-addons Maintainers
+# mosaic-open-platform Maintainers
 
-This file records who is responsible for `mosaic-addons`. Everyone listed here
+This file records who is responsible for `mosaic-open-platform`. Everyone listed here
 has agreed to be listed. Nobody is added without their consent.
 
 This repository is part of the MosAIc project. Governance is described in

@@ -1,4 +1,4 @@
-# mosaic-addons
+# mosaic-open-platform
 
 Addon monorepo for [Mosaic Companion](https://github.com/hypercycle-development/mosaic-companion)'s
 manifest-driven addon system. Each directory under `addons/` is one addon:
@@ -74,7 +74,7 @@ described here.
 ## Layout
 
 ```
-mosaic-addons/
+mosaic-open-platform/
   addons/                      — every addon that exists here, published or not
     hyperinsight/              — HyperInsight (manifest, main, renderer source + build)
   catalogue.json               — the publish set. An addon ships because it is

@@ -1,5 +1,5 @@
 {
-  "name": "mosaic-addons",
+  "name": "mosaic-open-platform",
   "private": true,
   "version": "0.1.0",
   "description": "Addon monorepo for Mosaic Companion's manifest-driven addon system.",
