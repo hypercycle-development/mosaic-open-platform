@@ -526,8 +526,27 @@ function checkVocabDrift(appSrc) {
   const p = path.join(appSrc, "electron", "addons", "manifest.ts");
   let src;
   try { src = fs.readFileSync(p, "utf8"); } catch { notes.push(`--app-src: ${p} not found; skipped drift check`); return; }
+  // Comments are stripped BEFORE the arrays are scanned, because the scan is a
+  // regex over quoted strings and a comment inside an array is indistinguishable
+  // from an entry.
+  //
+  // This is not hypothetical. manifest.ts carries, inside
+  // RESERVED_IPC_NAMESPACES:
+  //
+  //     // "hyperinsight" removed — that's now the HyperInsight
+  //     // addon's own ipcNamespace …
+  //
+  // so the scan read 24 namespaces where the app has 23, and reported a drift
+  // on `hyperinsight` — a name the app had deliberately FREED. Acting on that
+  // report by adding it to policy.mjs would make the adjudicator refuse an
+  // ipcNamespace the app accepts, failing a clean submission: the fix for a
+  // false alarm would have been worse than the alarm.
+  //
+  // A comment that mentions a removed entry is the normal way to record a
+  // removal, so this will recur. Strip, then scan.
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const arr = (name) => {
-    const m = src.match(new RegExp(`${name}[^=]*=\\s*\\[([\\s\\S]*?)\\]`));
+    const m = withoutComments.match(new RegExp(`${name}[^=]*=\\s*\\[([\\s\\S]*?)\\]`));
     return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null;
   };
   const cmp = (name, mine) => {
