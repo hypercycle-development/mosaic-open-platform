@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "compute-portal-addon",
+  "version": "1.0.0",
+  "name": "Compute Portal",
+  "description": "Cost-efficient compute marketplace for AI workloads — embedded iframe with affiliate referral tracking.",
+  "author": "Mauricio Prieto Davila (notsoblack)",
+  "homepage": "https://github.com/notsoblack/mosaic-addons",
+  "minAppVersion": "0.1.7",
+  "ipcNamespace": "computePortal",
+  "mountPoint": "tab",
+  "tab": {
+    "label": "Compute Portal",
+    "icon": "server",
+    "order": 115
+  },
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+  "permissions": [
+    "wallet:read",
+    "shell:open-external"
+  ],
+  "updates": {
+    "checkMode": "manual"
+  }
+}

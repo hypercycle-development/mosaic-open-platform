@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "loops-addon",
+  "version": "1.0.0",
+  "name": "Stargate Loops",
+  "description": "Honest Loop Designer — Design, validate, and export agent workflow topologies. No fake execution. Export JSON for external loop engines.",
+  "author": "Mauricio Prieto Davila (notsoblack)",
+  "homepage": "https://github.com/notsoblack/mosaic-addons",
+  "minAppVersion": "0.1.7",
+  "ipcNamespace": "loops",
+  "mountPoint": "tab",
+  "tab": {
+    "label": "Loops",
+    "icon": "git-branch",
+    "order": 120
+  },
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+  "permissions": [
+    "agents:read",
+    "mcp:read"
+  ],
+  "updates": {
+    "checkMode": "manual"
+  }
+}
