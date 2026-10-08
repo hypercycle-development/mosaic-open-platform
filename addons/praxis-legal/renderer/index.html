@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Praxis Legal</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; }
+    body { margin: 0; background: var(--background, #101015); color: var(--foreground, #f4f4f5); }
+    main { width: min(90%, 44rem); margin: 2rem auto; }
+    p, li { line-height: 1.6; }
+    button { padding: .75rem 1rem; font: inherit; cursor: pointer; }
+    #status[data-state="error"] { color: #fda4af; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Praxis Legal MCP</h1>
+    <p>Add Praxis as an MCP server, then ask questions in Mosaic’s AI Chat.</p>
+    <ol>
+      <li>Install the Praxis MCP server separately using the setup instructions shipped with its source.</li>
+      <li>In <strong>MCP Servers</strong>, connect <code>praxis-legal</code>. Its tool is <code>ask_praxis</code>.</li>
+      <li>Open <strong>AI Chat</strong> with your configured Mosaic agent. Ask: “Use ask_praxis to answer: What is the Rule 56 summary judgment standard?”</li>
+    </ol>
+    <p>The current integration supports public-law research. Do not include client or matter facts.</p>
+    <button id="check-connection" type="button">Check MCP connection</button>
+    <p id="status" role="status" aria-live="polite">Checking MCP connection…</p>
+  </main>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
