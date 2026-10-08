@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "id": "graph-addon",
+  "version": "1.0.0",
+  "name": "Stargate Graph",
+  "description": "Visual knowledge constellation for Stargate assets — Vault Boxes, MCPs, and agent loops rendered as an interactive SVG graph.",
+  "author": "Mauricio Prieto Davila (notsoblack)",
+  "homepage": "https://github.com/notsoblack/mosaic-addons",
+  "minAppVersion": "0.1.7",
+  "ipcNamespace": "graph",
+  "mountPoint": "tab",
+  "tab": {
+    "label": "Graph",
+    "icon": "share-2",
+    "order": 110
+  },
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+  "permissions": [
+    "agents:read",
+    "mcp:read",
+    "wallet:read"
+  ],
+  "updates": {
+    "checkMode": "manual"
+  }
+}
