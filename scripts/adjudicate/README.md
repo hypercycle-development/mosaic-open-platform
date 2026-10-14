@@ -31,7 +31,7 @@ affects the exit code). The queue *is* the agenda for Stage 6 — nothing more.
 | 1 | Scope containment | any path outside one `addons/<id>/`; touches registry/sig/CI/tooling; exec bit / symlink / submodule |
 | 2 | Applies | `git apply --check` fails on the base checkout |
 | 3 | Manifest conformance | mirrors the app's `validateManifest` policy subset: bad id/version/namespace, or a permission that is unknown or **reserved** (`wallet:sign`, `vault:*`, …) |
-| 4 | Supply chain | **any `scripts` key in the addon's own `package.json` that is not on the allowlist** — `ALLOWED_ADDON_SCRIPTS` in `policy.mjs`, currently build, dev, test, lint, typecheck, format, clean, watch, preview; any dependency specifier that is not a plain registry range — git and tarball URLs, local and workspace paths, `github:`, bare `user/repo`, and `npm:` aliases |
+| 4 | Supply chain | **any `scripts` key in the addon's own `package.json` that is not on the allowlist** — `ALLOWED_ADDON_SCRIPTS` in `policy.mjs`, currently build, dev, test, lint, typecheck, format, clean, watch, preview, or any of those with a `:suffix` (the segment before the colon is what is checked, so `pretest:unit` is refused like `pretest`); any dependency specifier that is not a plain registry range — git and tarball URLs, local and workspace paths, `github:`, bare `user/repo`, and `npm:` aliases |
 | 4b | Build reproducibility | convention-aware: if `renderer/` is gitignored build output (the mosaic-open-platform model), an absent bundle is correct and this instead flags that a sandboxed build (Stage 7) is required; it only *fails* when the repo tracks bundles and `src/` changed without a matching bundle update |
 | 5 | Capability scan | never fails — emits the judgment queue |
 

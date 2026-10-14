@@ -36,7 +36,7 @@ import {
   PERMISSION_VOCABULARY, RESERVED_PERMISSIONS, RESERVED_IPC_NAMESPACES,
   ID_PATTERN, IPC_NAMESPACE_PATTERN, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH,
   MAX_TAB_LABEL_LENGTH, SEMVER_RE, SENSITIVE_PATH_PATTERNS,
-  ALLOWED_ADDON_SCRIPTS, INSTALL_LIFECYCLE_SCRIPTS, NON_REGISTRY_DEP_RE, REGISTRY_TARBALL_RE, SCAN_CATEGORIES, URL_RE,
+  ALLOWED_ADDON_SCRIPTS, isPermittedScriptName, INSTALL_LIFECYCLE_SCRIPTS, NON_REGISTRY_DEP_RE, REGISTRY_TARBALL_RE, SCAN_CATEGORIES, URL_RE,
   BUCKET_ID_PATTERN, BUCKET_KIND_PATTERN, MAX_BUCKETS_PUBLISHED, MAX_BUCKET_KINDS_READ,
   MAX_BUCKET_LABEL_LENGTH, BUCKET_HISTORY_VALUES,
   MAIN_ENTRY_ALLOWLIST,
@@ -270,7 +270,7 @@ function main() {
       // refused because it was never permitted, rather than because someone
       // remembered to name it. See ALLOWED_ADDON_SCRIPTS in policy.mjs.
       for (const name of Object.keys(pkg.scripts || {})) {
-        if (ALLOWED_ADDON_SCRIPTS.includes(name)) continue;
+        if (isPermittedScriptName(name)) continue;
         const runsOnInstall = INSTALL_LIFECYCLE_SCRIPTS.includes(name);
         scriptViol.push(
           `${rel}: scripts.${name}` +
@@ -288,7 +288,8 @@ function main() {
       "4 supply-chain: only permitted script names",
       scriptViol.length === 0,
       scriptViol.length
-        ? `${scriptViol.join("; ")} — permitted: ${ALLOWED_ADDON_SCRIPTS.join(", ")}`
+        ? `${scriptViol.join("; ")} — permitted: ${ALLOWED_ADDON_SCRIPTS.join(", ")}, ` +
+          `or any of those with a \`:suffix\` (e.g. test:unit, typecheck:tests)`
         : "",
     );
     gate("4 supply-chain: all deps from the registry", depViol.length === 0, depViol.join("; "));

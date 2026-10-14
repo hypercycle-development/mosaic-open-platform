@@ -105,6 +105,28 @@ export const ALLOWED_ADDON_SCRIPTS = [
   "build", "dev", "test", "lint", "typecheck", "format", "clean", "watch", "preview",
 ];
 
+/**
+ * Is this script name permitted? A name passes when it is on the list above, or
+ * when the segment before its first colon is.
+ *
+ * The namespaced form was added for #14, after a submission was refused for
+ * `typecheck:tests` while `typecheck` was permitted. npm has no namespaced
+ * lifecycle hooks: nothing installs, publishes or runs another script in a way
+ * that reaches `typecheck:tests`, so the exact-match refusal was turning away a
+ * name that cannot do what this gate exists to prevent.
+ *
+ * The pre/post surface that motivates the allowlist is untouched, and that is
+ * the property to preserve when editing this. `pretest` is not on the list, so
+ * neither `pretest` nor `pretest:unit` passes — the base segment is checked, not
+ * merely stripped. Likewise `postinstall` and `prepare` are refused exactly as
+ * before, by not being on the list under any form.
+ */
+export function isPermittedScriptName(name) {
+  if (typeof name !== "string" || name === "") return false;
+  if (ALLOWED_ADDON_SCRIPTS.includes(name)) return true;
+  return ALLOWED_ADDON_SCRIPTS.includes(name.split(":")[0]);
+}
+
 // Kept only to make a rejection message more useful: if the offending name is
 // one of these, the submitter gets told it executes on install rather than just
 // that it is not permitted. Never used as the check itself — see above.
