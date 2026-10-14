@@ -11,7 +11,7 @@
   "mountPoint": "tab",
   "tab": {
     "label": "Loops",
-    "icon": "git-branch",
+    "icon": "Clock",
     "order": 120
   },
   "renderer": {
