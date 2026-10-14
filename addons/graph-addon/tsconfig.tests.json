@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "tests"
+  ],
+  "exclude": [
+    "tests/roundtrip.test.ts",
+    "tests/manifest-buckets.test.ts"
+  ]
+}
