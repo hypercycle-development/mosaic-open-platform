@@ -59,8 +59,9 @@ Some things a submission cannot currently do, and why:
 - **Everything must stay inside `addons/<your-id>/`.**
 - **Your `package.json` may only declare script names from a fixed list.**
   Currently: `build`, `dev`, `test`, `lint`, `typecheck`, `format`, `clean`,
-  `watch`, `preview`. **Anything else is rejected outright**, including names
-  that look harmless.
+  `watch`, `preview` — **or any of those with a `:suffix`**, so `test:unit` and
+  `typecheck:tests` are both fine. **Anything else is rejected outright**,
+  including names that look harmless.
 
   This is an allowlist rather than a list of banned names, and deliberately so.
   npm decides for itself which script names it executes when dependencies are
@@ -69,6 +70,11 @@ Some things a submission cannot currently do, and why:
   of forbidden names is a list that a new name walks straight past. Publication
   runs exactly one script from your add-on, `build`, so permitting a short set
   of ordinary developer names costs you nothing.
+
+  The `:suffix` forms are permitted because npm has no namespaced hooks — there
+  is no install, publish or pre/post path that reaches `typecheck:tests`. Note
+  that the check reads the name before the colon, so `pretest:unit` is refused
+  for the same reason `pretest` is.
 
   **This governs script *names*, not what they do.** Your `build` command is
   still arbitrary, still runs when we package your add-on, and is still read by
