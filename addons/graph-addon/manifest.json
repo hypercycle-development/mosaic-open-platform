@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "graph-addon",
+  "version": "1.0.0",
+  "name": "Stargate Graph",
+  "description": "Knowledge constellation of Stargate assets \u2014 MCP servers, agents, factories and skills from the Mosaic bridge \u2014 and a read-only report of the loop drafts published by Stargate Loops.",
+  "author": "Mauricio Prieto Davila (notsoblack)",
+  "homepage": "https://github.com/notsoblack/mosaic-addons",
+  "minAppVersion": "0.1.13",
+  "ipcNamespace": "graph",
+  "mountPoint": "tab",
+  "tab": {
+    "label": "Graph",
+    "icon": "share-2",
+    "order": 110
+  },
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+  "permissions": [
+    "agents:read",
+    "mcp:read"
+  ],
+  "buckets": {
+    "publishes": [],
+    "reads": [
+      "loop-draft"
+    ]
+  },
+  "updates": {
+    "checkMode": "manual"
+  }
+}
