@@ -11,7 +11,7 @@
   "mountPoint": "tab",
   "tab": {
     "label": "Graph",
-    "icon": "share-2",
+    "icon": "Network",
     "order": 110
   },
   "renderer": {
