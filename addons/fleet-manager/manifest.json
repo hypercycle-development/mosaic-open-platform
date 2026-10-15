@@ -1,0 +1,26 @@
+{
+  "manifestVersion": 1,
+  "id": "fleet-manager",
+  "version": "0.1.0",
+  "name": "Fleet Manager",
+  "description": "HyperCycle node fleet management and diagnostics integration for Mosaic",
+  "author": "BitSempre",
+  "homepage": "https://github.com/hypercycle-development/mosaic-addons",
+  "minAppVersion": "0.1.7",
+  "ipcNamespace": "fleet-manager",
+  "mountPoint": "tab",
+  "tab": {
+    "label": "Fleet Manager",
+    "icon": "Server",
+    "order": 80
+  },
+  "renderer": {
+    "entry": "renderer/index.html"
+  },
+  "permissions": [
+    "nodes:read"
+  ],
+  "updates": {
+    "checkMode": "manual"
+  }
+}
