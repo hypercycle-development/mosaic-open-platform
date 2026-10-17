@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "praxis-legal",
+  "name": "Praxis Legal",
+  "version": "0.2.0",
+  "description": "Connect the Praxis MCP server and use ask_praxis from Mosaic chat.",
+  "mountPoint": "tab",
+  "ipcNamespace": "praxis-legal",
+  "tab": {
+    "label": "Praxis Legal",
+    "icon": "Shield",
+    "order": 100
+  },
+  "permissions": [
+    "mcp:read"
+  ],
+  "renderer": {
+    "entry": "renderer/index.html"
+  }
+}
