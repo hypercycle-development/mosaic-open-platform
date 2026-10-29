@@ -77,7 +77,16 @@ jobs:
       # adjudicator reads the same thing a contributor is asked to produce,
       # sign-offs and all.
       - name: Produce the patch
-        run: git format-patch "origin/${GITHUB_BASE_REF}..HEAD" --stdout > "${RUNNER_TEMP}/pr.patch"
+        run: |
+          git format-patch "origin/${GITHUB_BASE_REF}..HEAD" --stdout > "${RUNNER_TEMP}/pr.patch"
+          COMMITS=$(git rev-list --count "origin/${GITHUB_BASE_REF}..HEAD")
+          # Stage 0 blocks on this, correctly and by documented policy — but it
+          # reports a count, and a count does not tell you what to do. Say it.
+          if [ "$COMMITS" -ne 1 ]; then
+            echo "::error::This branch has $COMMITS commits and a submission is one logical commit" \
+              "(CONTRIBUTING.md). Squash and force-push:" \
+              "git reset --soft \$(git merge-base origin/${GITHUB_BASE_REF} HEAD) && git commit -s && git push --force-with-lease"
+          fi
 
       - name: Stages 0-5 — scope, provenance, manifest, supply chain
         run: |
@@ -94,21 +103,31 @@ jobs:
             --base-ref "origin/${GITHUB_BASE_REF}"
 
       # One add-on's test suite validates its manifest against the app's REAL
-      # `validateManifest()`, which is the strongest test in either submission
-      # and needs mosaic-companion to resolve `semver`. The tag comes from the
-      # surface artifact, so the version the static checks judge against and
-      # the version the tests run against cannot drift apart.
+      # `validateManifest()` rather than against a copy of the rules. It is the
+      # strongest test in either submission and the reason it is worth solving
+      # the cross-repo dependency issue #19 left open, instead of letting the
+      # suite skip in CI.
       #
-      # `--ignore-scripts` and a single dependency: nothing here builds or runs
-      # the app, so Electron's postinstall would be minutes spent on nothing.
+      # The tag comes out of the surface artifact, so the version the static
+      # checks judge against and the version the tests run against cannot drift
+      # apart. One pin, two consumers.
+      #
+      # `semver` is installed in ISOLATION and then placed, which is not
+      # fussiness: `npm install --no-save semver` inside the checkout reconciles
+      # everything package.json declares too, and that is a gigabyte of Electron
+      # toolchain to obtain one module with no dependencies of its own. This way
+      # is 12 MB and seconds. `manifest.ts` imports nothing else.
       - name: Check out mosaic-companion at the pinned surface version
         id: companion
         run: |
           REF=$(node -p "require('./base/scripts/adjudicate/addon-surface.json').app.describe")
           echo "mosaic-companion $REF"
-          git clone --depth 1 --branch "$REF" \
+          git clone --quiet --depth 1 --branch "$REF" \
             https://github.com/hypercycle-development/mosaic-companion.git "${RUNNER_TEMP}/companion"
-          npm --prefix "${RUNNER_TEMP}/companion" install --no-save --ignore-scripts --no-audit --no-fund semver
+          npm --prefix "${RUNNER_TEMP}/semver-only" install \
+            --no-save --ignore-scripts --no-audit --no-fund semver
+          mkdir -p "${RUNNER_TEMP}/companion/node_modules"
+          cp -R "${RUNNER_TEMP}/semver-only/node_modules/." "${RUNNER_TEMP}/companion/node_modules/"
           echo "path=${RUNNER_TEMP}/companion" >> "$GITHUB_OUTPUT"
 
       # Exactly what the release build does — `npm ci --ignore-scripts` then the

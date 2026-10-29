@@ -105,16 +105,28 @@ const readJson = (p) => {
 };
 
 // ── the add-on's files ──────────────────────────────────────────────────────
+// THE SUBMISSION IS WHAT IS COMMITTED, and in a git tree `ls-files` says so
+// exactly. Nothing else does.
+//
+// Reading the directory instead is wrong in a way that only shows up once
+// somebody has run a build. `dist/` and a built `renderer/` are untracked
+// output, and they contain other people's code: a bundle inlines its
+// dependencies, so a test bundle in graph-addon's `dist/` carries
+// loops-addon's publisher and a copy of the app's own `manifest.ts`. Scanned,
+// that made a clean add-on look like it was calling `buckets.write` without
+// declaring `buckets:publish` — a submission whose own tests assert the
+// opposite, failed for code it does not contain. And the instruction on this
+// tool is "run it before you submit", so a contributor's tree having been
+// built is the normal case, not the exception.
+//
+// A hand-written `renderer/` is kept, because it is tracked. That matters
+// independently: `addons/*/renderer/` is gitignored repo-wide, so filtering on
+// ignore status would drop it — and for an add-on with no build step it holds
+// every line that calls `addonAPI`.
 function walkDir(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const e of readdirSync(dir)) {
-    // node_modules is not the submission. `renderer/` deliberately IS walked:
-    // it is gitignored build output when the add-on has a build step, so a
-    // renderer/ that exists in a committed tree is hand-written SOURCE — and
-    // skipping it once meant an add-on whose only addonAPI calls live in
-    // renderer/app.mjs was checked over zero calls, and its one real
-    // permission reported as declared-but-unused.
-    if (e === "node_modules" || e === ".git") continue;
+    if (e === "node_modules" || e === ".git" || e === "dist") continue;
     const p = path.join(dir, e);
     if (statSync(p).isDirectory()) walkDir(p, out);
     else out.push(p);
@@ -122,7 +134,23 @@ function walkDir(dir, out = []) {
   return out;
 }
 
-const files = walkDir(DIR);
+function trackedFiles() {
+  try {
+    const out = execFileSync("git", ["-C", SRC, "ls-files", "-z", "--", `addons/${ADDON}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const list = out.split("\0").filter(Boolean).map((r) => path.join(SRC, r));
+    return list.length ? list : null;
+  } catch {
+    return null; // not a git tree — an extracted tarball, say
+  }
+}
+
+const tracked = trackedFiles();
+// The fallback walk keeps `--src` usable on an extracted tree, which is how
+// the operational driver hands over a frozen snapshot of a patch.
+const files = tracked ?? walkDir(DIR);
 const rel = (p) => path.relative(DIR, p);
 const SOURCE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".html", ".css"]);
 const sourceFiles = files.filter((p) => SOURCE_EXT.has(path.extname(p)));
@@ -359,34 +387,34 @@ for (const projDir of projects) {
 
   const projPkg = readJson(path.join(projDir, "package.json"));
   const lock = readJson(path.join(projDir, "package-lock.json"));
-  const declaresDeps = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].some(
-    (field) => Object.keys(projPkg?.[field] ?? {}).length > 0,
-  );
 
-  // Only worth anything because the release build runs `npm ci`. Under
-  // `npm install` the lockfile is advisory and all of this describes a file
-  // the build then ignores — the two are one decision.
+  // Everything below is only worth anything because publication runs `npm ci`
+  // and not `npm install`: under `install` the lockfile is advisory and all of
+  // this describes a file the build then ignores. The two are one decision.
   //
-  // A package.json that declares NO dependencies has nothing to pin, and npm
-  // writes no meaningful lockfile for it. Demanding one anyway failed our own
-  // add-on, whose `main/package.json` is `{"type": "module"}` and nothing
-  // else — a manifest of intent, not a dependency set.
-  if (!declaresDeps) {
-    info(
-      bare ? "lockfile-none-needed" : `lockfile-none-needed:${label}`,
-      bare ? "no dependencies declared" : `no dependencies declared — ${label}/`,
-      "nothing to pin, so no lockfile is required",
+  // Which project needs a lockfile follows from exactly that. `build-addon.mjs`
+  // runs `npm ci` in the add-on's ROOT and nowhere else, and `npm ci` fails
+  // outright without a lockfile — so a root package.json with none does not
+  // merely risk drift, it breaks publication. A package.json in a
+  // SUBDIRECTORY is never installed by anything here, and demanding a lockfile
+  // for it failed our own add-on, whose `main/package.json` is
+  // `{"type": "module"}` and nothing else.
+  if (label === "root") {
+    g(
+      "lockfile-present",
+      !!lock,
+      "package-lock.json present and parses",
+      lock
+        ? `lockfileVersion ${lock.lockfileVersion}, ${Object.keys(lock.packages ?? {}).length} package(s)`
+        : "publication runs `npm ci`, which fails outright with no lockfile",
     );
-    continue;
+  } else if (!lock) {
+    info(
+      `lockfile-none:${label}`,
+      `no lockfile — ${label}/`,
+      "publication installs only the add-on root, so nothing here is resolved from this file",
+    );
   }
-  g(
-    "lockfile-present",
-    !!lock,
-    "package-lock.json present and parses",
-    lock
-      ? `lockfileVersion ${lock.lockfileVersion}, ${Object.keys(lock.packages ?? {}).length} package(s)`
-      : "dependencies are declared, so `npm ci` needs a lockfile to install them reproducibly",
-  );
   if (!lock) continue;
 
   const pkgs = lock.packages ?? {};
