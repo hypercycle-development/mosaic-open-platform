@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "app": {
+    "name": "mosaic-companion",
+    "version": "0.1.13",
+    "commit": "7af40c8ba2ed283a67852a2d8378eec425d1f943",
+    "describe": "v0.1.13"
+  },
+  "sinceHorizon": "0.1.10",
+  "api": {
+    "namespaces": {
+      "system": {
+        "methods": {
+          "getAppInfo": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "getManifest": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "getTheme": {
+            "permission": null,
+            "since": "0.1.10"
+          }
+        }
+      },
+      "settings": {
+        "methods": {
+          "clear": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "get": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "replace": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "set": {
+            "permission": null,
+            "since": "0.1.10"
+          }
+        }
+      },
+      "files": {
+        "methods": {
+          "delete": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "list": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "mkdir": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "read": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "readBinary": {
+            "permission": null,
+            "since": "0.1.10"
+          },
+          "write": {
+            "permission": null,
+            "since": "0.1.10"
+          }
+        }
+      },
+      "events": {
+        "methods": {
+          "on": {
+            "permission": null,
+            "since": "0.1.10"
+          }
+        }
+      },
+      "ui": {
+        "methods": {
+          "openExternal": {
+            "permission": "shell:open-external",
+            "since": "0.1.10"
+          },
+          "setTitle": {
+            "permission": null,
+            "since": "0.1.10"
+          }
+        }
+      },
+      "wallet": {
+        "methods": {
+          "getAddress": {
+            "permission": "wallet:read",
+            "since": "0.1.10"
+          },
+          "getBalance": {
+            "permission": "wallet:read",
+            "since": "0.1.10"
+          },
+          "getNetworkInfo": {
+            "permission": "wallet:read",
+            "since": "0.1.10"
+          }
+        }
+      },
+      "agents": {
+        "methods": {
+          "add": {
+            "permission": "agents:write",
+            "since": "0.1.10"
+          },
+          "get": {
+            "permission": "agents:read",
+            "since": "0.1.10"
+          },
+          "list": {
+            "permission": "agents:read",
+            "since": "0.1.10"
+          },
+          "update": {
+            "permission": "agents:write",
+            "since": "0.1.10"
+          }
+        }
+      },
+      "mcp": {
+        "methods": {
+          "callTool": {
+            "permission": "mcp:call",
+            "since": "0.1.10"
+          },
+          "listServers": {
+            "permission": "mcp:read",
+            "since": "0.1.10"
+          },
+          "listTools": {
+            "permission": "mcp:read",
+            "since": "0.1.10"
+          }
+        }
+      },
+      "nodes": {
+        "methods": {
+          "getSavedAims": {
+            "permission": "nodes:read",
+            "since": "0.1.10"
+          },
+          "list": {
+            "permission": "nodes:read",
+            "since": "0.1.10"
+          }
+        }
+      },
+      "buckets": {
+        "methods": {
+          "clear": {
+            "permission": "buckets:publish",
+            "since": "0.1.13"
+          },
+          "list": {
+            "permission": null,
+            "since": "0.1.13"
+          },
+          "read": {
+            "permission": null,
+            "since": "0.1.13"
+          },
+          "write": {
+            "permission": "buckets:publish",
+            "since": "0.1.13"
+          }
+        }
+      }
+    },
+    "members": {
+      "init": {
+        "since": "0.1.10"
+      },
+      "invoke": {
+        "since": "0.1.10"
+      },
+      "parseError": {
+        "since": "0.1.10"
+      }
+    },
+    "internal": {
+      "events.subscribe": {
+        "permission": null
+      },
+      "events.unsubscribe": {
+        "permission": null
+      }
+    }
+  },
+  "permissions": {
+    "grantable": {
+      "wallet:read": {
+        "since": "0.1.10"
+      },
+      "agents:read": {
+        "since": "0.1.10"
+      },
+      "agents:write": {
+        "since": "0.1.10"
+      },
+      "mcp:read": {
+        "since": "0.1.10"
+      },
+      "mcp:call": {
+        "since": "0.1.10"
+      },
+      "nodes:read": {
+        "since": "0.1.10"
+      },
+      "shell:open-external": {
+        "since": "0.1.10"
+      },
+      "buckets:publish": {
+        "since": "0.1.13"
+      }
+    },
+    "reserved": [
+      "wallet:sign",
+      "agents:delete",
+      "vault:read",
+      "vault:write",
+      "notifications"
+    ]
+  },
+  "reservedIpcNamespaces": [
+    "nodes",
+    "ai-agents",
+    "ai-agents-history",
+    "themes",
+    "gmail",
+    "web3",
+    "vault",
+    "media",
+    "window",
+    "dialog",
+    "sandbox",
+    "toolSandbox",
+    "chronicle",
+    "tools",
+    "mcp",
+    "chat",
+    "ide",
+    "aimnodes",
+    "payments-jit",
+    "addon",
+    "addon-api",
+    "addons",
+    "tab-prefs"
+  ],
+  "mainEntryAllowlist": [
+    "hyperinsight"
+  ],
+  "tabIcons": {
+    "names": [
+      "Activity",
+      "BarChart3",
+      "Bot",
+      "Box",
+      "Boxes",
+      "BrainCircuit",
+      "Clock",
+      "Code2",
+      "Cpu",
+      "Database",
+      "Eth",
+      "Globe",
+      "Hash",
+      "Home",
+      "Layers",
+      "LayoutGrid",
+      "Lock",
+      "MessageSquare",
+      "Network",
+      "Plug",
+      "Power",
+      "Rocket",
+      "Server",
+      "Settings",
+      "Shield",
+      "Sparkles",
+      "Star",
+      "Store",
+      "Telescope",
+      "Trophy",
+      "Wallet",
+      "Zap"
+    ],
+    "fallback": null
+  },
+  "manifest": {
+    "manifestVersion": 1,
+    "mountPoints": [
+      "tab"
+    ],
+    "idPattern": "^[a-z][a-z0-9-]{1,40}$",
+    "ipcNamespacePattern": "^[a-z][a-z0-9-]{1,40}$",
+    "maxNameLength": 40,
+    "maxDescriptionLength": 200,
+    "maxTabLabelLength": 24,
+    "defaultTabOrder": 100,
+    "bucketIdPattern": "^[a-z][a-z0-9-]{1,40}$",
+    "bucketKindPattern": "^[a-z][a-z0-9-]{1,40}$",
+    "maxBucketsPublished": 8,
+    "maxBucketKindsRead": 8,
+    "maxBucketLabelLength": 40,
+    "bucketHistoryValues": [
+      "all"
+    ]
+  }
+}
