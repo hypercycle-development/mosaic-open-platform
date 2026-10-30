@@ -976,17 +976,34 @@ if (typeof args["base-ref"] === "string") {
 // A tool self-check is NOT a submission gate. It is loud, and it never counts
 // against the pull request.
 {
+  // The two directions are not the same fault and do not have the same fix.
+  // BEHIND means the mirror is stale and refuses something the app accepts —
+  // that is the one that fails a clean submission, and it is fixed here.
+  // AHEAD is usually not a fault at all: a permission merges into `policy.mjs`
+  // so the adjudicator will accept it the day the app ships it, and until that
+  // release the vendored surface legitimately does not have it. Its fix is to
+  // bump the artifact after the release. Saying "fix policy.mjs" in that case
+  // would be telling a maintainer to revert work that is deliberately early.
   const diff = (name, mine, theirs) => {
     const a = new Set(mine);
     const b = new Set(theirs);
     const only = (x, y) => [...x].filter((v) => !y.has(v));
-    const missing = only(b, a);
-    const extra = only(a, b);
-    if (!missing.length && !extra.length) return null;
+    const behind = only(b, a);
+    const ahead = only(a, b);
+    if (!behind.length && !ahead.length) return null;
     return (
       `${name}: ` +
-      [missing.length ? `policy.mjs is MISSING ${missing.join(", ")}` : null,
-       extra.length ? `policy.mjs has ${extra.join(", ")} which the app does not` : null]
+      [
+        behind.length
+          ? `policy.mjs is BEHIND the app and does not know ${behind.join(", ")} — ` +
+            `add them, or it refuses something the app accepts`
+          : null,
+        ahead.length
+          ? `policy.mjs is AHEAD of ${surface.app.describe} with ${ahead.join(", ")} — ` +
+            `expected if those ship in a later release, in which case bump addon-surface.json ` +
+            `once it is out; a fault only if they were never in the app`
+          : null,
+      ]
         .filter(Boolean)
         .join("; ")
     );
@@ -999,8 +1016,8 @@ if (typeof args["base-ref"] === "string") {
   if (drifts.length) {
     info(
       "policy-drift",
-      `⚑ OUR TOOLING, NOT THIS SUBMISSION — policy.mjs has drifted from ${surface.app.describe}`,
-      drifts.join(" | ") + " — fix policy.mjs; do not ask the contributor to change anything",
+      `⚑ OUR TOOLING, NOT THIS SUBMISSION — policy.mjs and ${surface.app.describe} disagree`,
+      drifts.join(" | ") + " — whatever the resolution, do not ask the contributor to change anything",
     );
   } else {
     info("policy-drift", "policy.mjs agrees with the app surface", `checked against ${surface.app.describe}`);
