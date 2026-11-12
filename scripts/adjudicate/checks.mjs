@@ -632,16 +632,53 @@ const calls = (ns, name) => new RegExp(`\\b${ns}\\s*(\\?\\.|\\.)\\s*${name}\\s*(
     usedUndeclared.length ? usedUndeclared.join("; ") : `${declared.length} declared`,
   );
 
+  // Not every permission is spendable through the bridge. `media:camera` and
+  // `media:microphone` gate Electron's own session permission handler, so an
+  // add-on exercises them with `navigator.mediaDevices`, not with an
+  // `addonAPI` call — and judging them by whether a bridge method was called
+  // reports a correctly-declared permission as an over-broad ask. Which
+  // permissions are API-gated is read off the surface rather than listed, so
+  // a vocabulary that grows again does not need this edited.
+  const apiGated = new Set();
+  for (const [, m] of index) if (m.exposed && m.permission) apiGated.add(m.permission);
+
+  const WEB_CAPABILITY_EVIDENCE = {
+    "media:camera": /\bnavigator\.mediaDevices\.(getUserMedia|getDisplayMedia)\s*\(/,
+    "media:microphone": /\bnavigator\.mediaDevices\.(getUserMedia|getDisplayMedia)\s*\(/,
+  };
+
   // Declared but never called: an over-broad ask. A question, never a block —
   // an add-on may legitimately hold a permission for a path this scan cannot
   // see, and refusing it would be refusing a guess.
-  const unused = declared.filter((p) => !satisfied.has(p));
+  const unused = declared.filter((p) => apiGated.has(p) && !satisfied.has(p));
   flag(
     "perm-declared-unused",
     unused.length > 0,
     "declared permissions with no corresponding call in the source",
-    unused.length ? `${unused.join(", ")} — ask why each is requested` : `all ${declared.length} declared are used`,
+    unused.length ? `${unused.join(", ")} — ask why each is requested` : `all ${declared.filter((p) => apiGated.has(p)).length} API-gated permission(s) declared are used`,
   );
+
+  const webCaps = declared.filter((p) => !apiGated.has(p));
+  if (webCaps.length) {
+    const witnessed = [];
+    const unwitnessed = [];
+    for (const p of webCaps) {
+      const re = WEB_CAPABILITY_EVIDENCE[p];
+      if (!re) { unwitnessed.push(`${p} (no evidence pattern known for it — read the source)`); continue; }
+      const hit = rendererFiles.find((f) => re.test(codeOf.get(f) ?? ""));
+      (hit ? witnessed : unwitnessed).push(hit ? `${p} → ${rel(hit)}` : `${p} (declared, but nothing in the source opens the device)`);
+    }
+    info(
+      "perm-web-capability",
+      "permissions the app gates outside the bridge",
+      [
+        `${webCaps.join(", ")} — these reach Electron's session permission handler, not addonAPI, so no API call can evidence them.`,
+        witnessed.length ? `  witnessed: ${witnessed.join("; ")}` : "",
+        unwitnessed.length ? `  NOT witnessed: ${unwitnessed.join("; ")}` : "",
+        "  Declaring one is necessary and not sufficient: the app asks the user again the first time the device is opened in a session, and that answer lasts only until they quit. An add-on that treats a refusal as fatal should be sent back.",
+      ].filter(Boolean).join("\n           ↳ "),
+    );
+  }
 }
 
 // ── NEW: does tab.icon resolve to something the sidebar can draw? ──────────
