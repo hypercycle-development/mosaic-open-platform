@@ -887,15 +887,32 @@ if (typeof args["base-ref"] === "string") {
 // A file nobody imports is not a defect, but it is reviewer time spent on code
 // that cannot run, and it inflates the diff a person has to justify signing.
 {
-  const entryish = /(^|\/)(main|index|App)\.(t|j)sx?$|\.(html|css)$|\.config\.(t|j)s$|vite-env\.d\.ts$/;
+  // An ambient declaration is not code that runs, and TypeScript picks it up
+  // from tsconfig rather than from an import, so no file ever names it.
+  const entryish = /(^|\/)(main|index|App)\.(t|j)sx?$|\.(html|css)$|\.config\.(t|j)s$|\.d\.ts$/;
+  // A test file's importer is the runner, not another source file. Reporting
+  // every one of them as code nothing runs is noise on every submission that
+  // has tests — which is the ones we want to encourage.
+  const testish = /(^|\/)(__tests__|tests?)\/|\.(test|spec)\.[mc]?[tj]sx?$/;
   const unreferenced = [];
   for (const p of sourceFiles) {
     const r = rel(p);
-    if (entryish.test(r)) continue;
-    const stem = r.replace(/\.(tsx?|jsx?)$/, "").split("/").pop();
+    if (entryish.test(r) || testish.test(r)) continue;
+    const stem = r.replace(/\.[mc]?[tj]sx?$/, "").split("/").pop().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // The specifier may or may not carry the extension: `./host` and
+    // `./host.js` are the same import, and matching only the first reported
+    // the Studio's host adapter as dead code while App.jsx imported it by
+    // name on line 15.
+    const spec = `["'][^"']*${stem}(\\.[mc]?[tj]sx?)?["']`;
+    // The simplest add-ons have no bundler: one HTML file and one script,
+    // reached by `<script src="app.js">` and never imported by anything.
+    // Those are the easiest submissions to review and should not be the ones
+    // reported as carrying dead code.
+    const tag = new RegExp(`<script[^>]+src\\s*=\\s*["'][^"']*${stem}(\\.[mc]?[tj]sx?)?["']`, "i");
+    const named = new RegExp(`(from|import|require)\\s*\\(?\\s*${spec}`);
     const importedBy = sourceFiles
       .filter((q) => q !== p)
-      .some((q) => new RegExp(`from\\s+["'][^"']*${stem}["']|import\\(["'][^"']*${stem}["']`).test(readFileSync(q, "utf8")));
+      .some((q) => { const t = readFileSync(q, "utf8"); return named.test(t) || tag.test(t); });
     if (!importedBy) unreferenced.push(`${r} (${readFileSync(p, "utf8").split("\n").length} lines)`);
   }
   flag(
