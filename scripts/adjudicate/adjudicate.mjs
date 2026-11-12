@@ -384,21 +384,48 @@ function main() {
   }
 
   // ── Stage 5: capability scan → JUDGMENT QUEUE (never a gate) ──────────────
+  // Prose is not code. A README sentence containing the word "WebSocket" is
+  // not an egress site, and a link in it is not a host the add-on contacts.
+  // Reading the two as one list is how video-chat (#21) enumerated as
+  // reaching `localhost` and `github.com` — both from its README — while its
+  // actual relay and STUN server appeared nowhere in the list at all.
+  const isDoc = (p) => /\.(md|markdown|txt)$/i.test(p) || /(^|\/)(LICENSE|NOTICE)$/.test(p);
+
+  // A lockfile's `resolved` URLs are build-time fetches, and stage 4c already
+  // gates every one of them as registry-hosted and pinned. Repeating them here
+  // buries the handful of run-time hosts this list exists to surface: the
+  // Studio's own two became nine once npm's were mixed in.
+  const isLockfile = (p) => /(^|\/)package-lock\.json$/.test(p);
+  // `xmlns="http://www.w3.org/2000/svg"` names an XML namespace. Nothing is
+  // fetched from it, and an icon file is not an egress site.
+  const isNamespaceDecl = (t) => /\bxmlns(:\w+)?\s*=/.test(t);
+
   const hosts = new Set();
+  const docHosts = new Set();
   for (const cat of SCAN_CATEGORIES) {
     const items = [];
     for (const f of files) {
       const p = pathOf(f);
+      if (isDoc(p)) continue;
       for (const { line, text } of f.added) {
         if (cat.patterns.some((re) => re.test(text))) items.push({ file: p, line, text: text.trim().slice(0, 160) });
       }
     }
     if (items.length) queue.push({ category: cat.label, key: cat.key, items });
   }
-  for (const f of files)
-    for (const { text } of f.added)
-      for (const m of text.matchAll(URL_RE)) hosts.add(m[1]);
-  if (hosts.size) notes.push(`Network hosts referenced (no allowlist exists yet — judge each): ${[...hosts].join(", ")}`);
+  for (const f of files) {
+    const p = pathOf(f);
+    if (isLockfile(p)) continue;
+    const into = isDoc(p) ? docHosts : hosts;
+    for (const { text } of f.added) {
+      if (isNamespaceDecl(text)) continue;
+      for (const m of text.matchAll(URL_RE)) into.add(m[1] ?? m[2]);
+    }
+  }
+  for (const h of hosts) docHosts.delete(h);
+  if (hosts.size) notes.push(`Network hosts referenced in code (no allowlist exists yet — judge each): ${[...hosts].join(", ")}`);
+  else notes.push("No network host appears in the submitted code — judge that against what the add-on says it does.");
+  if (docHosts.size) notes.push(`Hosts named only in documentation, never in code: ${[...docHosts].join(", ")}`);
 
   // ── optional: vocabulary drift check against the app source ───────────────
   if (args.appSrc) checkVocabDrift(args.appSrc);

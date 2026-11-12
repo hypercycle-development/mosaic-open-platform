@@ -202,7 +202,13 @@ export const SCAN_CATEGORIES = [
     patterns: [
       /\bchild_process\b/,
       /\bspawn(Sync)?\s*\(/,
-      /\bexec(File)?(Sync)?\s*\(/,
+      // `.exec(` on its own is RegExp.prototype.exec, which any scanner,
+      // validator or syntax highlighter uses — so a dotted bare `exec` is
+      // excluded and only the unqualified call is kept. The named variants
+      // have no RegExp counterpart and stay matchable either way; a
+      // `cp.execSync()` is still reached through child_process above.
+      /(?<![.\w$])exec\s*\(/,
+      /\bexec(File|Sync|FileSync)\s*\(/,
       /["']node:child_process["']/,
     ],
   },
@@ -253,4 +259,14 @@ export const SCAN_CATEGORIES = [
 ];
 
 // Extract bare hostnames from any URL literals, for the network judgment list.
-export const URL_RE = /\bhttps?:\/\/([^\s/"'`)]+)/g;
+//
+// `https?` alone is not the egress surface. A renderer reaches the network
+// over WebSocket as readily as over HTTP, and WebRTC names its relays with
+// `stun:`/`turn:` and no `//` at all. An add-on whose only two hosts are a
+// `wss://` relay and a STUN server therefore enumerated as contacting
+// nothing, while the reviewer was shown hosts harvested from its README —
+// a list that is worse than no list, because it reads as a complete one.
+// Match the capturing group that fired: m[1] for the authority forms,
+// m[2] for the scheme-only ones.
+export const URL_RE =
+  /\b(?:https?|wss?):\/\/([^\s/"'`)]+)|\b(?:stuns?|turns?):([^\s/"'`)]+)/g;
