@@ -7,7 +7,7 @@
     "build": "vite build",
     "dev": "vite",
     "lint": "eslint .",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "dependencies": {
     "lucide-react": "^1.59.0",
