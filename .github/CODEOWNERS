@@ -1,0 +1,45 @@
+# Code owners — the files that decide whether a submission is acceptable.
+#
+# WHY THIS FILE EXISTS, and it is not general hygiene.
+#
+# `addon-pr.yml` says of itself that the gate must not be modifiable by what it
+# is gating, and runs every check from the base revision for exactly that
+# reason. That holds for the scripts. It does NOT hold for the workflow file,
+# because on a `pull_request` event GitHub executes the workflow YAML from the
+# pull request's own merge commit, not from the base. So a submission that adds
+# `addons/x/**` and replaces `addon-pr.yml` with a job of the same name that
+# exits 0 produces a green required check, and stage 1 — which refuses a patch
+# touching anything outside `addons/<id>/` — never runs, because stage 1 is
+# inside the file that was replaced.
+#
+# What that does and does not get an attacker: a forged passing check on a bad
+# add-on. It gains no CI privilege (the job holds `contents: read` and fork
+# secrets are absent), and GitHub shows the `.github/` change in the diff. So
+# the exposure is a maintainer trusting the check over the file list.
+#
+# This file makes that require a maintainer's review. The standing rule it
+# encodes, which matters more than the mechanism: AN ADD-ON SUBMISSION HAS NO
+# REASON TO TOUCH ANY OF THESE PATHS, so one that does is refused on sight
+# rather than read.
+#
+# Enabling "Require review from Code Owners" in the branch protection for `main`
+# is what gives this file effect. Without that setting it is advisory.
+
+# The review machinery itself.
+/.github/                       @zephyrnova @dxnn @BarryJRowe
+/scripts/                       @zephyrnova @dxnn @BarryJRowe
+
+# The licensing and contribution terms a submission is accepted under.
+/LICENSING.md                   @zephyrnova @dxnn @BarryJRowe
+/CONTRIBUTING.md                @zephyrnova @dxnn @BarryJRowe
+/MAINTAINERS.md                 @zephyrnova @dxnn @BarryJRowe
+/LICENSE                        @zephyrnova @dxnn @BarryJRowe
+/NOTICE                         @zephyrnova @dxnn @BarryJRowe
+
+# The publisher keys. An add-on's signature is worth whatever this file is.
+/publisher-keys.json            @zephyrnova @dxnn @BarryJRowe
+
+# Deliberately NOT listed: `addons/`. That is where submissions go, and
+# requiring a code-owner review there would say nothing — every submission
+# needs a maintainer's review already, and the point of this file is to
+# distinguish the submission from the rules it is judged by.

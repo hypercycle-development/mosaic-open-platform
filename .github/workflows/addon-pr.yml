@@ -35,10 +35,16 @@ jobs:
       # Full history: the adjudicator applies the submission to the BASE and
       # the checks compare against it, and neither is possible from a depth-1
       # checkout.
+      # `persist-credentials: false` because a later step runs the submission's
+      # own build and test scripts. The default leaves GITHUB_TOKEN in
+      # .git/config, which that code can read; nothing here needs it, since
+      # `fetch-depth: 0` has already fetched everything and the only remote
+      # operation afterwards is an anonymous clone of a public repository.
       - name: Checkout the pull request
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -69,6 +75,18 @@ jobs:
             echo "::error::Expected exactly one addons/<id>/ in this pull request, found: ${IDS//$'\n'/, }"
             exit 1
           fi
+          # Refuse anything that is not a plain id, HERE, before any later step
+          # has it. Stage 3 gates the id properly against the manifest, but it
+          # does so in a different file behind a different gate — and the shell
+          # steps below would otherwise receive whatever `sed` cut out of a path.
+          # git C-quotes only `"`, `\` and control bytes, so `$`, `(`, `)`, `|`,
+          # `;` and spaces survive a path intact. Nothing exploitable reached
+          # those steps while stage 3 held, which is exactly the kind of
+          # protection that should not be load-bearing from another file.
+          if ! printf '%s' "$IDS" | grep -Eq '^[a-z][a-z0-9-]{1,40}$'; then
+            echo "::error::Add-on directory name \"$IDS\" is not of the form [a-z][a-z0-9-]{1,40}"
+            exit 1
+          fi
           echo "addon=$IDS" >> "$GITHUB_OUTPUT"
           echo "Add-on: $IDS"
 
@@ -79,7 +97,13 @@ jobs:
       - name: Produce the patch
         run: |
           git format-patch "origin/${GITHUB_BASE_REF}..HEAD" --stdout > "${RUNNER_TEMP}/pr.patch"
-          COMMITS=$(git rev-list --count "origin/${GITHUB_BASE_REF}..HEAD")
+          # `--no-merges` matters here: on a `pull_request` event the checkout is
+          # the synthetic MERGE commit, so a plain count returns 2 for a
+          # one-commit submission and this error fired on every pull request.
+          # `format-patch` already omits merges, so stage 0 was right and only
+          # the advice was wrong — which is the worse way round, because it
+          # taught contributors to distrust a correct gate.
+          COMMITS=$(git rev-list --count --no-merges "origin/${GITHUB_BASE_REF}..HEAD")
           # Stage 0 blocks on this, correctly and by documented policy — but it
           # reports a count, and a count does not tell you what to do. Say it.
           if [ "$COMMITS" -ne 1 ]; then
@@ -94,10 +118,16 @@ jobs:
             --patch "${RUNNER_TEMP}/pr.patch" \
             --repo base
 
+      # The id goes through `env:` rather than being interpolated into the
+      # script. A `${{ }}` expression is substituted into the script text before
+      # bash parses it, so a value carrying shell metacharacters would be
+      # executed rather than passed; `$ADDON` is just a variable by then.
       - name: Add-on checks — licence, lockfile, API surface, manifest claims
+        env:
+          ADDON: ${{ steps.addon.outputs.addon }}
         run: |
           node base/scripts/adjudicate/checks.mjs \
-            --addon "${{ steps.addon.outputs.addon }}" \
+            --addon "$ADDON" \
             --src . \
             --patch "${RUNNER_TEMP}/pr.patch" \
             --base-ref "origin/${GITHUB_BASE_REF}"
@@ -121,9 +151,19 @@ jobs:
         id: companion
         run: |
           REF=$(node -p "require('./base/scripts/adjudicate/addon-surface.json').app.describe")
+          WANT=$(node -p "require('./base/scripts/adjudicate/addon-surface.json').app.commit")
           echo "mosaic-companion $REF"
           git clone --quiet --depth 1 --branch "$REF" \
             https://github.com/hypercycle-development/mosaic-companion.git "${RUNNER_TEMP}/companion"
+          # The surface artifact records the commit it was generated from, and
+          # until now nothing compared it to what the tag actually resolves to.
+          # A moved tag would silently judge submissions against one revision
+          # while testing them against another.
+          GOT=$(git -C "${RUNNER_TEMP}/companion" rev-parse HEAD)
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::addon-surface.json was generated at $WANT but tag $REF now resolves to $GOT"
+            exit 1
+          fi
           npm --prefix "${RUNNER_TEMP}/semver-only" install \
             --no-save --ignore-scripts --no-audit --no-fund semver
           mkdir -p "${RUNNER_TEMP}/companion/node_modules"
@@ -133,6 +173,26 @@ jobs:
       # Exactly what the release build does — `npm ci --ignore-scripts` then the
       # add-on's own build — because a lockfile `npm ci` refuses, or a build
       # that does not compile, is only ever caught here. Both happened.
+      # Written BEFORE the submission's own code runs. Every step from here on
+      # executes contributor code, and `$GITHUB_STEP_SUMMARY` is writable from
+      # it — so a submission can append whatever Markdown it likes to this job's
+      # summary. It cannot alter what is already there, so stating the verdict
+      # first means anything appended appears below it rather than instead of it.
+      - name: Record the gate result before running submitted code
+        env:
+          ADDON: ${{ steps.addon.outputs.addon }}
+        run: |
+          {
+            echo "## Add-on submission: \`$ADDON\`"
+            echo
+            echo "Stages 0–5 and the add-on checks **passed**, judged from the base revision."
+            echo
+            echo "Everything below this line is produced by the submission's own"
+            echo "build and test scripts and is not a statement by this workflow."
+            echo
+            echo "---"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Install and build the add-on, alone
         working-directory: addons/${{ steps.addon.outputs.addon }}
         run: |
@@ -143,7 +203,13 @@ jobs:
           if [ -f package-lock.json ]; then
             npm ci --ignore-scripts
           else
-            echo "::notice::No lockfile; nothing to install reproducibly."
+            # The `lockfile-present` gate already failed this submission, so the
+            # job will not reach a merge. Said here only so the build log does
+            # not read as though a missing lockfile were tolerable: publication
+            # runs `npm ci`, which fails outright without one. The two halves of
+            # this pull request disagreed about that until 2026-11-27.
+            echo "::error::No lockfile. Publication runs \`npm ci\`, which fails without one — see the lockfile-present gate above."
+            exit 1
           fi
           if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
             npm run build
