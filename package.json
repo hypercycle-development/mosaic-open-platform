@@ -5,6 +5,8 @@
   "description": "Addon monorepo for Mosaic Companion's manifest-driven addon system.",
   "type": "module",
   "scripts": {
+    "adjudicate": "node scripts/adjudicate/adjudicate.mjs",
+    "checks": "node scripts/adjudicate/checks.mjs",
     "build:addon": "node scripts/build-addon.mjs",
     "build:registry": "node scripts/build-registry.mjs",
     "sign:registry": "node scripts/sign-registry.mjs"

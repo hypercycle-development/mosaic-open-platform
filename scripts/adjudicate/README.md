@@ -15,9 +15,18 @@ skips everything below. Ask for, or produce, a patch and run it through this.
 
 ```
 Stages 0–5 + 4b   DETERMINISTIC   adjudicate.mjs → PASS / REVIEW / BLOCK
+                                  checks.mjs     → the result, vs the app
+                                  addon-pr.yml   → both, plus build and test
 Stage 6           JUDGMENT        a human/LLM reads only the flagged sites
 Stage 7           RUNTIME         isolated build + install, testnet only
 ```
+
+`adjudicate.mjs` rules on the **patch**: what it touches, whether it applies,
+whether the manifest and the declared dependency ranges conform.
+`checks.mjs` rules on the **result** — the add-on as it will sit in the tree,
+read against the app's own published surface and against its own claims. The
+workflow runs both on every pull request touching `addons/**`, then installs,
+builds and tests the add-on with nothing else present.
 
 `adjudicate.mjs` prints two blocks: **HARD GATES** (any failure ⇒ `BLOCK`, exit
 1) and a **JUDGMENT QUEUE** (file:line hits that a person must rule on; never
@@ -81,16 +90,75 @@ node scripts/adjudicate/adjudicate.mjs \
 
 Getting the patch from a gist: `gh api gists/<id> --jq '.files["<name>.patch"].content' > x.patch`.
 
-## Keeping policy in sync
+```sh
+node scripts/adjudicate/checks.mjs \
+  --addon <id> \
+  [--src <dir>]           # tree containing addons/ — default: this repo
+  [--surface <file>]      # default: ./addon-surface.json
+  [--patch <file>]        # to check DCO sign-offs
+  [--base-ref <ref>]      # e.g. origin/main — for collisions and the test diff
+  [--json]
+```
 
-`policy.mjs` mirrors the **source of truth** in
-`mosaic-companion/electron/addons/manifest.ts` (`PERMISSION_VOCABULARY`,
-`RESERVED_PERMISSIONS`, `RESERVED_IPC_NAMESPACES`, `MAIN_ENTRY_ALLOWLIST`). Pass `--app-src` to diff the
-mirror against the app and fail on drift.
+`checks.mjs` gates on: a licence that is present, recognised and names a
+holder; a lockfile that pins every declared dependency to the public registry
+with an integrity hash; no copyleft licence among the dependencies inlined into
+the bundle; every `window.addonAPI` call naming a method the app exposes; no
+call needing a permission the manifest does not declare; `tab.icon` resolving
+to an icon the sidebar can draw; `minAppVersion` being old enough to be true of
+the APIs called; and no reference to a host global other than `window.addonAPI`.
+It flags, without blocking, an over-broad permission ask, dependencies that run
+install scripts, browser storage, cross-frame messaging, unimported source, and
+named tests that existed in the previous revision and do not now.
 
-The drift check covers the vocabularies it can read as arrays. It is a guard
-against the mirror going quietly stale, not a substitute for updating both
-sides when the app's policy changes.
+## Where the app's policy comes from
+
+`addon-surface.json` is **mosaic-companion's own description of its add-on
+surface**, generated from its source at a named release by its
+`scripts/addon-surface.mjs` and attached to that release. It carries the
+namespaces and their methods, the permission each one requires, the grantable
+and reserved vocabularies, the reserved IPC namespaces, the main-entry
+allowlist, the renderable `tab.icon` set, the manifest patterns and limits —
+and the app version at which each method and permission first appeared.
+
+Update it from a release, in its own commit, naming the release:
+
+```sh
+gh release download vX.Y.Z --repo hypercycle-development/mosaic-companion \
+  -p addon-surface.json -O scripts/adjudicate/addon-surface.json
+```
+
+Bumping it is a policy change — it can newly accept or newly refuse a
+submission.
+
+`policy.mjs` is the older arrangement: a mirror of the same vocabularies,
+maintained here by hand, which `adjudicate.mjs` still gates on. `checks.mjs`
+compares the two and reports any disagreement **as our defect, in the notes,
+never against the pull request**. That replaces `--app-src`, which read the
+app's TypeScript with a regex and once reported a drift on an `ipcNamespace`
+the app had deliberately freed, because the regex harvested a name out of the
+comment recording its removal. Acting on that report would have made the
+adjudicator refuse something the app accepts.
+
+### The rule that shapes all of this
+
+**A gate that can block a contributor must derive its expectations from the
+application at a pinned version, never from a mirrored list, and must never
+read a comment as code.** Three of the four gate failures on the final review
+round of the first two external submissions were defects in our own checking,
+not in the submission: an add-on was failed for calling `addonAPI.events.on`,
+which exists and which our own review had told it to use; another for "needing
+`mcp:call`" on the strength of a comment explaining why it does not call it;
+and a third because the script allowlist matched exactly and refused
+`typecheck:tests` (#14, fixed in #15). A false block costs more than a missed
+flag, because the contributor can neither act on it nor see why.
+
+Two more were found by running the promoted checks over the add-ons already in
+this catalogue, before any of them ever saw a submission: a `LICENSE` holder
+gate written for MIT, which fails every correct Apache-2.0 submission because
+that licence carries its notice in a `NOTICE` file; and a lockfile gate applied
+to a `package.json` declaring no dependencies at all. Run a new gate over what
+is already here before you let it near a pull request.
 
 ## What the deterministic stages are, and are not
 
@@ -109,7 +177,16 @@ reviewer reading a green result as an assurance it was never able to give.
 - **Stage 6 is where a submission is actually judged.** Stages 0–5 exist to
   make that judgment cheap and well-aimed, not to replace it.
 - **Stage 4b does not run the build.** It reasons about whether the src/bundle
-  relationship is coherent. The build itself happens in Stage 7.
+  relationship is coherent. `addon-pr.yml` runs the build itself — `npm ci
+  --ignore-scripts` then the add-on's own `npm run build`, exactly as
+  publication does — which is the only thing that catches a lockfile `npm ci`
+  refuses or a build that does not compile. Both happened.
+- **`checks.mjs` reads the code; it does not run it.** It can tell you that a
+  method does not exist. It cannot tell you that a button reporting a publish
+  performed one, that a "Live" badge is over live data, or that an executor
+  returning success did the work. Every finding of that kind this process has
+  produced came from a person reading the code against its own claims, and the
+  automation exists to make that reading cheap rather than to replace it.
 - **Stage 7 is manual.**
 
 The pipeline's own limitations are tracked with the release tooling rather than

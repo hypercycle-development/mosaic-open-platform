@@ -112,7 +112,34 @@ directory" and skip the manifest checks, which is the part most worth having.
 If `git format-patch main..HEAD` gives you more than one commit, squash first —
 one logical commit is a gate in its own right.
 
-It reports `PASS` / `FAIL` per named gate and ends in a verdict. It covers more
+Then run the second tool, which reads your add-on as it will sit in the tree
+rather than as a patch, and needs no base worktree:
+
+```sh
+node scripts/adjudicate/checks.mjs --addon my-addon --patch mine.patch
+```
+
+It gates on the things a reviewer used to find by eye, and most of them are
+answerable only against the application itself: whether every
+`window.addonAPI` call you make names a method that exists, whether any of
+them needs a permission your manifest does not declare, whether `tab.icon` is
+a name the sidebar can actually draw, whether `minAppVersion` is old enough to
+be true of the APIs you call, whether your `LICENSE` names a holder, and
+whether your lockfile pins every dependency to the public registry with an
+integrity hash. It also reports which of your dependencies run install scripts,
+which carry a copyleft licence, and which named tests existed in your previous
+revision and do not now.
+
+It answers those from `scripts/adjudicate/addon-surface.json`, which is
+mosaic-companion's own published description of its add-on surface at a named
+release — not a copy of it maintained here. The app version it judges against
+is printed at the top of the report.
+
+Both tools run the same code CI runs, so a clean result locally is a clean
+result on your pull request.
+
+`adjudicate.mjs` reports `PASS` / `FAIL` per named gate and ends in a verdict.
+It covers more
 than the list above: path traversal, executable bits, changes to signing or
 tooling paths, build reproducibility, and full manifest conformance —
 `manifestVersion`, the id pattern and that `id` equals the directory name,
