@@ -156,6 +156,22 @@ const SOURCE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".html
 const sourceFiles = files.filter((p) => SOURCE_EXT.has(path.extname(p)));
 
 /**
+ * HTML comments blanked, line count preserved.
+ *
+ * `.html` is in SOURCE_EXT above, and `stripComments` below understands only
+ * `//` and block comments — so `<!-- we deliberately do not call
+ * addonAPI.vault.getBoxes -->` in an index.html failed `api-methods-exist`.
+ * Measured 2026-11-27. That is precisely the defect class the header of this
+ * file says is unreachable, in the one comment syntax it did not cover.
+ *
+ * Runs before `stripComments` so a `/*` inside an HTML comment cannot open a
+ * block that swallows real code after the `-->`.
+ */
+function stripHtmlComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+}
+
+/**
  * Comments removed, line count preserved.
  *
  * Every scan below that can fail a submission runs on this and not on the raw
@@ -207,7 +223,9 @@ function stripComments(text) {
   return out.join("\n");
 }
 
-const codeOf = new Map(sourceFiles.map((p) => [p, stripComments(readFileSync(p, "utf8"))]));
+const codeOf = new Map(
+  sourceFiles.map((p) => [p, stripComments(stripHtmlComments(readFileSync(p, "utf8")))]),
+);
 
 const manifest = readJson(path.join(DIR, "manifest.json"));
 const pkg = readJson(path.join(DIR, "package.json"));
@@ -228,7 +246,25 @@ const mainDir = typeof manifest?.main?.entry === "string" ? manifest.main.entry.
 const rendererFiles = mainDir
   ? sourceFiles.filter((p) => !rel(p).startsWith(`${mainDir}/`))
   : sourceFiles;
-const rendererCode = rendererFiles.map((p) => codeOf.get(p)).join("\n");
+/**
+ * Which identifiers count as the bridge root, per file.
+ *
+ * `addonAPI` always does. **`api` only does in a file that actually aliases
+ * it** — `const api = window.addonAPI` is the common form — because `api` is
+ * also one of the commonest names in renderer code for something else
+ * entirely. Measured 2026-11-27: `const api = createClient();
+ * api.users.list()` was failed for calling a namespace called "users", and an
+ * OpenAI client bound to the same name was failed for "chat". A REST client
+ * with sub-resources is not a bridge call, and reading one as a bridge call is
+ * a false block on a correct add-on.
+ *
+ * An add-on that aliases the bridge under some third name escapes these scans.
+ * That is accepted: they are honesty checks on a cooperative submitter, the
+ * app enforces permissions at dispatch, and evasion buys a dead feature rather
+ * than a capability. A false block costs more.
+ */
+const ALIASES_BRIDGE = /(?:const|let|var)\s+api\s*=\s*(?:window\s*\??\.\s*)?addonAPI\b/;
+const bridgeRootsFor = (p) => (ALIASES_BRIDGE.test(codeOf.get(p)) ? "addonAPI|api" : "addonAPI");
 
 info("surface", "judged against app surface", `${surface.app.name} ${surface.app.describe} (${surface.app.version})`);
 
@@ -254,28 +290,112 @@ if (manifest) {
 // carries no `license` field yet and it "cannot be validated or required"
 // (mosaic-companion#138) — so its absence is reported, never failed.
 {
-  const licensePath = path.join(DIR, "LICENSE");
-  const hasLicense = existsSync(licensePath);
-  gate("license-present", hasLicense, "LICENSE present in the add-on directory");
+  // ACCEPTED FILE NAMES. This gate and CONTRIBUTING.md both demanded the exact
+  // string `LICENSE`, so `LICENSE.md`, `LICENCE`, `COPYING` and `UNLICENSE`
+  // were all refused — every one of them ordinary and correct. Measured
+  // 2026-11-27.
+  const LICENSE_STEMS = ["LICENSE", "LICENCE", "COPYING", "UNLICENSE"];
+  const isLicenseName = (b) => {
+    const u = b.toUpperCase();
+    return LICENSE_STEMS.some((n) => u === n || u === `${n}.MD` || u === `${n}.TXT`);
+  };
+  const licensePath = files.filter((p) => path.dirname(p) === DIR).find((p) => isLicenseName(path.basename(p)));
+  const hasLicense = !!licensePath;
+  gate(
+    "license-present",
+    hasLicense,
+    "a licence file is present in the add-on directory",
+    hasLicense
+      ? path.basename(licensePath)
+      : `none of ${LICENSE_STEMS.join(", ")} (optionally .md/.txt). Without a licence there is no ` +
+        `right to copy the add-on, so nothing can be published`,
+  );
   if (hasLicense) {
     const text = readFileSync(licensePath, "utf8");
+    // Quotes are matched loosely: a correct MIT text pasted from a web page
+    // carries curly quotes around "AS IS" and read as unrecognised.
+    const q = `["“”]`;
     let detected = "unrecognised";
-    if (/Permission is hereby granted, free of charge/.test(text) && /THE SOFTWARE IS PROVIDED "AS IS"/.test(text))
-      detected = "MIT";
-    else if (/Apache License/.test(text) && /Version 2\.0/.test(text)) detected = "Apache-2.0";
-    else if (/GNU (GENERAL PUBLIC|LESSER|AFFERO)/.test(text)) detected = "GPL-family";
-    else if (/Redistribution and use in source and binary forms/.test(text)) detected = "BSD";
-    else if (/Mozilla Public License/.test(text)) detected = "MPL-2.0";
+    let family = "unknown";
+    const det = (id, fam) => ((detected = id), (family = fam), true);
+    // prettier-ignore
+    void (
+      (/Permission is hereby granted, free of charge/.test(text) &&
+        new RegExp(`THE SOFTWARE IS PROVIDED ${q}AS IS${q}`, "i").test(text) && det("MIT", "permissive")) ||
+      (/Apache License/.test(text) && /Version 2\.0/.test(text) && det("Apache-2.0", "permissive")) ||
+      (/CC0 1\.0 Universal/.test(text) && det("CC0-1.0", "permissive")) ||
+      (/free and unencumbered software released into the public domain/i.test(text) &&
+        det("Unlicense", "permissive")) ||
+      (/GNU AFFERO/i.test(text) && det("AGPL-3.0", "copyleft")) ||
+      (/GNU LESSER/i.test(text) && det("LGPL", "copyleft")) ||
+      (/GNU GENERAL PUBLIC/i.test(text) && det("GPL", "copyleft")) ||
+      (/Mozilla Public License/.test(text) && det("MPL-2.0", "copyleft")) ||
+      (/Eclipse Public License/.test(text) && det("EPL", "copyleft")) ||
+      (/European Union Public Licence/i.test(text) && det("EUPL", "copyleft")) ||
+      (/Business Source License/i.test(text) && det("BSL", "source-available")) ||
+      (/Elastic License/i.test(text) && det("Elastic", "source-available")) ||
+      (/Server Side Public License/i.test(text) && det("SSPL", "source-available")) ||
+      (/PolyForm/i.test(text) && det("PolyForm", "source-available")) ||
+      (/Commons Clause/i.test(text) && det("Commons-Clause", "source-available")) ||
+      // BSD and ISC/0BSD share an opening; order matters. ISC and 0BSD differ
+      // only in whether the notice must be retained.
+      (/Redistribution and use in source and binary forms/.test(text) && det("BSD", "permissive")) ||
+      (/for any purpose with or without fee/i.test(text) &&
+        det(/copyright notice/i.test(text) ? "ISC" : "0BSD", "permissive")) ||
+      (/zlib License/i.test(text) && det("Zlib", "permissive")) ||
+      (/Blue Oak Model License/i.test(text) && det("BlueOak-1.0.0", "permissive"))
+    );
 
-    gate("license-recognised", detected !== "unrecognised", "LICENSE is a recognised OSI text", `reads as ${detected}`);
+    // NOT A GATE, deliberately, and this is the calibration change of
+    // 2026-11-27. Refusing an unrecognised text blocked ISC — which is npm's
+    // own `npm init` default — along with 0BSD, Unlicense and CC0, all of
+    // which impose nothing on anyone. A text nobody recognises needs a person
+    // to read it, not a regex to refuse it. The only licence state that
+    // genuinely cannot be published is NO licence, and that is the gate above.
+    flag(
+      "license-unrecognised",
+      detected === "unrecognised",
+      "the licence text is not one this check recognises — read it",
+      `${path.basename(licensePath)} matched no known licence. Confirm it permits redistribution ` +
+        `before this is published; if it is a known licence, add its fingerprint here`,
+    );
+    if (detected !== "unrecognised") {
+      info("license-recognised", "licence", `${path.basename(licensePath)} reads as ${detected} (${family})`);
+    }
 
-    // Copyleft for the add-on's OWN code is unanalysed policy, not a defect —
-    // LICENSING.md says so in terms. Surface it for a decision.
+    // RULED 2026-11-27: copyleft for the add-on's own code is ACCEPTED. Add-ons
+    // do not link into the app or into each other — each runs in its own
+    // webview on its own session partition and buckets carry data, not code —
+    // so this is mere aggregation (GPLv2 §2 final paragraph, GPLv3 §5) and the
+    // copyleft does not reach the app or any other add-on.
+    //
+    // What it does create is one duty on US as distributor, because the
+    // catalogue hosts the tarball: corresponding source for the version
+    // shipped has to be reachable from the same place (GPLv3 §6, GPLv2 §3,
+    // MPL-2.0 §3.2(a)). The source in `addons/<id>/` at the release tag
+    // satisfies it. So this is a release-job obligation, not a submission
+    // defect — which is why it is a flag addressed to us.
     flag(
       "license-copyleft",
-      detected === "GPL-family" || detected === "MPL-2.0",
-      "the add-on's own licence is copyleft (LICENSING.md: position not worked through)",
-      detected,
+      family === "copyleft",
+      "copyleft add-on — confirm the release makes source for this version reachable",
+      `${detected}. Accepted (mere aggregation: nothing links to this add-on). Our duty as ` +
+        `distributor is that source for the published version is reachable from the release`,
+    );
+
+    // HELD, not refused. These permit redistribution, so hosting is lawful —
+    // but they restrict what a USER may do, and the app has nowhere to show a
+    // user the terms before install: the manifest carries no `license` field
+    // (mosaic-companion#138) and the consent dialog shows permissions only.
+    // Publishing one under a page that reads as open source would surprise the
+    // person installing it, which is the one thing the catalogue's own
+    // criterion rules out. Revisit when #138 lands.
+    flag(
+      "license-field-of-use",
+      family === "source-available",
+      "source-available licence — restricts the USER, and nothing shows them the terms yet",
+      `${detected} carries a field-of-use restriction. Hosting it is lawful; offering it without ` +
+        `install-time disclosure is the problem. Hold pending mosaic-companion#138`,
     );
 
     // A licence with no holder is a contract gap, not a nit: LICENSING.md is
@@ -288,43 +408,76 @@ if (manifest) {
     // and the convention is a NOTICE file alongside. Requiring a
     // `Copyright (c)` line in the LICENSE regardless failed our own
     // Apache-2.0 add-on.
-    const NOTICE_IN_TEXT = new Set(["MIT", "BSD", "unrecognised"]);
     const noticeFile = ["NOTICE", "NOTICE.txt", "NOTICE.md", "COPYRIGHT"]
       .map((f) => path.join(DIR, f))
       .find((f) => existsSync(f));
+    // THE HOLDER PATTERN, corrected 2026-11-27. It required the match to begin
+    // with a DIGIT and rejected any line containing `<`, which refused three
+    // correct and ordinary forms:
+    //   `Copyright (c) 2026 Jane Doe <jane@example.com>` — the `<` rule, and
+    //                                                      this is the commonest form of all
+    //   `Copyright (c) Jane Doe`                        — the digit rule; no licence requires a year
+    //   `Copyright (c) 2026 Hostname Labs`              — /NAME/i matching "Host*name*"
+    // Only KNOWN placeholder tokens disqualify a line now.
+    const PLACEHOLDER =
+      /<years?>|<copyright[^>]*>|<name[^>]*>|<owner>|\[years?\]|\[yyyy\]|\[fullname\]|\[name[^\]]*\]|\byyyy\b/i;
     const holderIn = (s) => {
-      const m = s && /Copyright\s*(?:\(c\)|©)?\s*(\d[^\n]*)/i.exec(s);
-      return m && !/\[|<|YEAR|NAME|yyyy/i.test(m[1]) ? m[1].trim() : null;
+      const m = s && /Copyright\s*(?:\(c\)|©)?\s*([^\n]+)/i.exec(s);
+      return m && !PLACEHOLDER.test(m[1]) ? m[1].trim() : null;
     };
     const holder = holderIn(text) ?? (noticeFile ? holderIn(readFileSync(noticeFile, "utf8")) : null);
-    const where = holder && !holderIn(text) ? path.basename(noticeFile) : "LICENSE";
-    if (NOTICE_IN_TEXT.has(detected)) {
-      gate(
-        "license-has-holder",
-        !!holder,
-        "the licence names a copyright holder",
-        holder ? `"${holder}" in ${where}` : `${detected} carries its notice in the licence text, and there is none`,
-      );
-    } else {
-      flag(
-        "license-has-holder",
-        !holder,
-        "no copyright holder found for a licence whose text does not carry one",
-        holder
-          ? `"${holder}" in ${where}`
-          : `${detected}'s body is boilerplate; add a NOTICE file naming the holder ` +
-            `(LICENSING.md: the contributor keeps their copyright)`,
-      );
-    }
+    const where = holder && !holderIn(text) ? path.basename(noticeFile) : path.basename(licensePath);
+    // NOT A GATE either, as of 2026-11-27. An unfilled MIT template still
+    // grants permission to "any person obtaining a copy", so the missing piece
+    // is attribution rather than validity — and the DCO sign-off already
+    // identifies the author. Worth fixing, never worth refusing over.
+    flag(
+      "license-no-holder",
+      !holder,
+      "the licence names no copyright holder",
+      holder
+        ? `"${holder}" in ${where}`
+        : `add a copyright line, or a NOTICE file naming the holder — the catalogue is explicit ` +
+          `that the contributor keeps their copyright (LICENSING.md), and an unfilled template ` +
+          `leaves nobody named`,
+    );
+    if (holder) info("license-holder", "copyright holder", `"${holder}" in ${where}`);
 
+    // SPDX EXPRESSIONS, parsed rather than string-matched, from 2026-11-27.
+    // The old test was `declared.startsWith(detected.replace("-family",""))`,
+    // which turned `GPL-family` into `GPL` and then refused the correct
+    // `LGPL-3.0` and `AGPL-3.0`, and refused any expression — `(MIT OR
+    // Apache-2.0)` fails a startsWith against `MIT` because it begins with a
+    // bracket. The rule that holds: for OR, any branch being acceptable is
+    // enough, because the recipient chooses; for AND, every branch must be.
     const declared = manifest?.license ?? pkg?.license;
     if (declared) {
-      gate(
-        "license-matches-declared",
-        String(declared).startsWith(detected.replace("-family", "")),
-        "declared SPDX id matches the LICENSE text",
-        `declared=${declared}, file reads as ${detected}`,
+      const expr = String(declared).trim();
+      const ids = expr
+        .replace(/[()]/g, " ")
+        .split(/\s+(?:OR|AND)\s+/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const isOr = /\bOR\b/i.test(expr);
+      // A declared id corresponds to the detected text if the detected family
+      // name is a prefix of it, ignoring version and `-only`/`-or-later`/`+`.
+      const corresponds = (id) => {
+        const bare = id.replace(/[+]$/, "").replace(/-(only|or-later)$/i, "");
+        return (
+          bare.toUpperCase() === detected.toUpperCase() ||
+          bare.toUpperCase().startsWith(`${detected.toUpperCase()}-`) ||
+          detected.toUpperCase().startsWith(bare.toUpperCase())
+        );
+      };
+      const ok = detected === "unrecognised" || (isOr ? ids.some(corresponds) : ids.every(corresponds));
+      flag(
+        "license-declared-mismatch",
+        !ok,
+        "the declared licence does not correspond to the licence file",
+        `declared=${expr} (${ids.join(" / ")}), file reads as ${detected}. One of the two is wrong; ` +
+          `the file is what travels with the tarball`,
       );
+      if (ok) info("license-declared", "declared licence", `${expr}, consistent with ${detected}`);
     } else {
       info(
         "license-undeclared",
@@ -340,7 +493,7 @@ if (manifest) {
 if (typeof args.patch === "string" && existsSync(args.patch)) {
   const patch = readFileSync(args.patch, "utf8");
   const commits = patch.split(/^From [0-9a-f]{40} /m).slice(1);
-  const authors = [...patch.matchAll(/^From: (.+)$/gm)].map((m) => m[1]);
+  // Authors are read per commit below, not as a set over the whole patch.
   const signoffs = [...patch.matchAll(/^Signed-off-by: (.+)$/gm)].map((m) => m[1].trim());
   gate(
     "dco-present",
@@ -352,13 +505,28 @@ if (typeof args.patch === "string" && existsSync(args.patch)) {
   // The DCO is an assertion BY THE AUTHOR. A sign-off from somebody else, with
   // none from the author, is the case worth catching.
   const emailOf = (s) => (s.match(/<([^>]+)>/) || [])[1]?.toLowerCase();
-  const authorEmails = new Set(authors.map(emailOf).filter(Boolean));
-  const signoffEmails = new Set(signoffs.map(emailOf).filter(Boolean));
+  // PER COMMIT, from 2026-11-27. Comparing two SETS over the whole patch let a
+  // multi-commit submission pass on the strength of one correct pair. Measured
+  // on #22: its second commit is authored `…+BitSempre@…` and signed off
+  // `…+BitSiempre@…` — an inserted letter, in the address and not just the
+  // display name — and the set check saw the FIRST commit's correct sign-off
+  // and passed the patch. The DCO is an assertion by the author of each commit,
+  // so it only means anything commit by commit.
+  const mismatched = commits
+    .map((c, i) => {
+      const author = emailOf((c.match(/^From: (.+)$/m) || [])[1] ?? "");
+      const sigs = [...c.matchAll(/^Signed-off-by: (.+)$/gm)].map((m) => emailOf(m[1])).filter(Boolean);
+      if (!author || sigs.includes(author)) return null;
+      return `commit ${i + 1}: authored ${author}, signed off by ${sigs.join(", ") || "nobody"}`;
+    })
+    .filter(Boolean);
   gate(
     "dco-matches-author",
-    [...authorEmails].some((e) => signoffEmails.has(e)),
-    "a Signed-off-by matches the commit author",
-    `author(s)=${[...authorEmails].join(", ")}; sign-off(s)=${[...signoffEmails].join(", ")}`,
+    mismatched.length === 0,
+    "every commit's Signed-off-by matches its own author",
+    mismatched.length
+      ? `${mismatched.join("; ")} — a sign-off by someone other than the author certifies the wrong thing`
+      : `${commits.length} commit(s), ${signoffs.length} sign-off line(s), each matching its author`,
   );
 }
 
@@ -486,20 +654,41 @@ for (const projDir of projects) {
   // nothing currently checks for it". This is that check. Dev dependencies
   // build the bundle but are not in it, so they are reported apart.
   const COPYLEFT = /\b(GPL|LGPL|AGPL|MPL|EPL|CDDL|CPL|OSL|SSPL)\b/i;
+  // A DUAL LICENCE IS NOT A COPYLEFT LICENCE. `(MPL-2.0 OR Apache-2.0)` is
+  // DOMPurify, `(BSD-3-Clause OR GPL-2.0)` is node-forge, `(MIT OR
+  // GPL-3.0-or-later)` is jszip — all three matched the pattern above and all
+  // three are ordinary dependencies a correct add-on may have. With an OR the
+  // recipient chooses, so we take the permissive branch and there is nothing to
+  // comply with. Measured 2026-11-27.
+  const effectivelyCopyleft = (lic) => {
+    const s = String(lic);
+    const branches = s.replace(/[()]/g, " ").split(/\s+OR\s+/i);
+    return branches.length > 1 ? branches.every((b) => COPYLEFT.test(b)) : COPYLEFT.test(s);
+  };
   const runtime = names.filter((n) => n.includes("node_modules/") && !pkgs[n].dev);
   const devOnly = names.filter((n) => n.includes("node_modules/") && pkgs[n].dev);
 
-  const runtimeCopyleft = runtime.filter((n) => pkgs[n].license && COPYLEFT.test(String(pkgs[n].license)));
-  g(
-    "dep-license-runtime",
-    runtimeCopyleft.length === 0,
-    "no copyleft licence among dependencies inlined into the bundle",
+  const runtimeCopyleft = runtime.filter((n) => pkgs[n].license && effectivelyCopyleft(pkgs[n].license));
+  // A FLAG, NOT A GATE, from 2026-11-27, and the reason is a correction of
+  // whose duty this is. A dependency's licence binds every conveyor in the
+  // chain — the author handing us the bundle, and us handing it to users — so
+  // it is a compliance task of ours, not a defect in the submission. It is also
+  // satisfiable in every case but one: the add-on's own source sits in
+  // `addons/<id>/`, which is the corresponding source. The single real
+  // incompatibility to check by hand is an Apache-2.0 add-on with a
+  // GPL-2.0-only dependency.
+  f(
+    "dep-license-copyleft-runtime",
+    runtimeCopyleft.length > 0,
+    "copyleft dependency inlined into the bundle — confirm source reachability and compatibility",
     runtimeCopyleft.length
-      ? runtimeCopyleft.map((n) => `${shortName(n)} (${pkgs[n].license})`).join(", ")
-      : `${runtime.length} runtime dependencies`,
+      ? `${runtimeCopyleft.map((n) => `${shortName(n)} (${pkgs[n].license})`).join(", ")}. ` +
+        `The bundle's effective licence becomes the strongest of these. Check one thing: an ` +
+        `Apache-2.0 add-on with a GPL-2.0-only dependency is the real incompatibility`
+      : `none among ${runtime.length} runtime dependencies`,
   );
 
-  const devCopyleft = devOnly.filter((n) => pkgs[n].license && COPYLEFT.test(String(pkgs[n].license)));
+  const devCopyleft = devOnly.filter((n) => pkgs[n].license && effectivelyCopyleft(pkgs[n].license));
   f(
     "dep-license-dev",
     devCopyleft.length > 0,
@@ -507,12 +696,31 @@ for (const projDir of projects) {
     devCopyleft.length ? devCopyleft.map((n) => `${shortName(n)} (${pkgs[n].license})`).join(", ") : "none",
   );
 
-  const unlicensed = [...runtime, ...devOnly].filter((n) => !pkgs[n].license);
-  f(
+  // PROMOTED TO A GATE on 2026-11-27, swapping places with the copyleft check
+  // above. The priorities were inverted: the satisfiable case was refused and
+  // the unsatisfiable one merely noted. A runtime dependency with NO licence
+  // recorded gives no right to copy it, and we are the ones copying it to
+  // users — so there is no basis on which the tarball can be published at all.
+  // That is the same reason a missing add-on licence is a gate.
+  //
+  // Scoped to RUNTIME deliberately: a build-only dependency is not in the
+  // artifact we distribute, so it stays a flag.
+  const unlicensedRuntime = runtime.filter((n) => !pkgs[n].license);
+  const unlicensedDev = devOnly.filter((n) => !pkgs[n].license);
+  g(
     "dep-license-missing",
-    unlicensed.length > 0,
-    "dependencies with no licence recorded in the lockfile",
-    unlicensed.length ? unlicensed.map(shortName).join(", ") : "none",
+    unlicensedRuntime.length === 0,
+    "every dependency inlined into the bundle records a licence",
+    unlicensedRuntime.length
+      ? `${unlicensedRuntime.map(shortName).join(", ")} — no licence recorded, so there is no stated ` +
+        `right to redistribute them inside the published tarball`
+      : `${runtime.length} runtime dependencies, all with a licence`,
+  );
+  f(
+    "dep-license-missing-dev",
+    unlicensedDev.length > 0,
+    "build-only dependencies with no licence recorded (not inlined, but note it)",
+    unlicensedDev.length ? unlicensedDev.map(shortName).join(", ") : "none",
   );
 }
 
@@ -538,8 +746,29 @@ if (mainDir) {
   );
 }
 
-/** Is `ns.name` called anywhere in the renderer? `a?.b?.()` counts. */
-const calls = (ns, name) => new RegExp(`\\b${ns}\\s*(\\?\\.|\\.)\\s*${name}\\s*(\\?\\.)?\\s*\\(`).test(rendererCode);
+/**
+ * Is `addonAPI.<ns>.<name>` called anywhere in the renderer? `a?.b?.()` counts.
+ *
+ * **Anchored to the bridge root**, for the same reason `BRIDGE_CALL` below is.
+ * Unanchored, this read any local object named like a namespace as a bridge
+ * call. Measured 2026-11-27: `const agents = new Set(); agents.add(x)`
+ * demanded `agents:write`, `const buckets = new Map(); buckets.clear()`
+ * demanded `buckets:publish`, an add-on's own ethers signer bound to `wallet`
+ * demanded `wallet:read`, and its own MCP client bound to `mcp` demanded
+ * `mcp:read` and `mcp:call`. The last two are the ordinary shape for a web3 or
+ * an MCP add-on, so the unanchored form was a false block aimed at most of the
+ * submission pipeline.
+ *
+ * Two gates read this — `perm-used-undeclared` and `min-app-version` — so an
+ * unanchored match did not merely add noise, it refused the submission.
+ */
+const calls = (ns, name) =>
+  rendererFiles.some((p) =>
+    new RegExp(
+      `(?<![\\w$.\\/:-])(?:window\\s*\\??\\.\\s*)?(?:${bridgeRootsFor(p)})` +
+        `\\s*\\??\\.\\s*${ns}\\s*(\\?\\.|\\.)\\s*${name}\\s*(\\?\\.)?\\s*\\(`,
+    ).test(codeOf.get(p)),
+  );
 
 {
   // An add-on calling a method the bridge does not expose is not a security
@@ -564,12 +793,28 @@ const calls = (ns, name) => new RegExp(`\\b${ns}\\s*(\\?\\.|\\.)\\s*${name}\\s*(
   // The lookbehind keeps a dotted path out of it. Without it the `api` alias
   // matches inside a URL: `'https://api.hyperinsight.app/v1'` was reported as
   // a call to a namespace called "hyperinsight".
-  const BRIDGE_CALL =
-    /(?<![\w$.\/:-])(?:window\s*\??\.\s*)?(addonAPI|api)\s*\??\.\s*([a-zA-Z_$][\w$]*)\s*\??\.\s*([a-zA-Z_$][\w$]*)\s*\(/g;
-  const BRIDGE_PROBE =
-    /(?<![\w$.\/:-])(?:window\s*\??\.\s*)?(addonAPI|api)\s*\??\.\s*([a-zA-Z_$][\w$]*)\s*\??\.\s*([a-zA-Z_$][\w$]*)\b(?!\s*\()/g;
+  //
+  // The roots are decided PER FILE by `bridgeRootsFor` — the lookbehind was
+  // not enough on its own, because `api` is a perfectly ordinary name for a
+  // REST client and `api.users.list()` is not a bridge call. See that helper
+  // for what was measured.
+  const bridgeCall = (roots) =>
+    new RegExp(
+      `(?<![\\w$.\\/:-])(?:window\\s*\\??\\.\\s*)?(${roots})\\s*\\??\\.\\s*` +
+        `([a-zA-Z_$][\\w$]*)\\s*\\??\\.\\s*([a-zA-Z_$][\\w$]*)\\s*\\(`,
+      "g",
+    );
+  const bridgeProbe = (roots) =>
+    new RegExp(
+      `(?<![\\w$.\\/:-])(?:window\\s*\\??\\.\\s*)?(${roots})\\s*\\??\\.\\s*` +
+        `([a-zA-Z_$][\\w$]*)\\s*\\??\\.\\s*([a-zA-Z_$][\\w$]*)\\b(?!\\s*\\()`,
+      "g",
+    );
 
   for (const p of rendererFiles) {
+    const roots = bridgeRootsFor(p);
+    const BRIDGE_CALL = bridgeCall(roots);
+    const BRIDGE_PROBE = bridgeProbe(roots);
     codeOf.get(p).split("\n").forEach((line, i) => {
       const where = `${rel(p)}:${i + 1}`;
       for (const m of line.matchAll(BRIDGE_CALL)) {
@@ -715,7 +960,11 @@ const calls = (ns, name) => new RegExp(`\\b${ns}\\s*(\\?\\.|\\.)\\s*${name}\\s*(
 // ── NEW: is minAppVersion consistent with the APIs called? ─────────────────
 // Validated as semver and against nothing else, so an add-on can declare a
 // floor older than the release that introduced an API it calls. One did:
-// `0.1.7` against `addonAPI.buckets`, which arrived in 0.1.13.
+// hyperinsight declares `0.1.7` while calling `addonAPI.files.readBinary` and
+// `addonAPI.nodes.list`, both of which arrived in 0.1.10 with the add-on bridge
+// itself. (An earlier version of this comment said `addonAPI.buckets` and
+// 0.1.13; that was the wrong namespace and the wrong release. Corrected
+// 2026-11-27 against the surface artifact's `since` fields.)
 {
   const used = [...callable].filter((k) => {
     const m = index.get(k);
