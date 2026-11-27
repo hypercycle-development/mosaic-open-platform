@@ -81,6 +81,23 @@ export const SENSITIVE_PATH_PATTERNS = [
   { re: /(^|\/)pnpm-workspace\.yaml$/, why: "pnpm workspace config" },
   { re: /(^|\/)\.pnpmfile\.cjs$/, why: "pnpm hook file — executes during install" },
   { re: /(^|\/)bunfig\.toml$/, why: "bun config — can re-point the registry for the build" },
+
+  // Git configuration that changes what a DIFF shows, which is a different
+  // kind of danger from the ones above: it does not alter what the build does,
+  // it alters what a reviewer sees.
+  //
+  // `.gitattributes` inside the addon's own directory, containing `*.js -diff`,
+  // makes `git format-patch` emit `GIT binary patch` for every JavaScript file
+  // in the submission. The parsed patch then has no added lines, so the stage 5
+  // capability scan has nothing to read and the judgment queue comes back
+  // `(none)`. Verified 2026-11-27: a file containing `child_process`, `exec(`,
+  // `eval(` and a `wss://` exfiltration host produced `VERDICT: PASS — no items
+  // flagged`. The gates that read the tree rather than the patch are
+  // unaffected, so this hides the report rather than passing a gate — but the
+  // report is the reviewer's agenda, and a scan that silently reads nothing is
+  // worse than no scan.
+  { re: /(^|\/)\.gitattributes$/, why: "git attributes — can suppress the diff a reviewer reads" },
+  { re: /(^|\/)\.mailmap$/, why: "git mailmap — can rewrite the authorship a reviewer sees" },
 ];
 
 // The complete set of `scripts` keys an addon's package.json may declare.
