@@ -83,6 +83,23 @@ export const SENSITIVE_PATH_PATTERNS = [
   { re: /(^|\/)pnpm-workspace\.yaml$/, why: "pnpm workspace config" },
   { re: /(^|\/)\.pnpmfile\.cjs$/, why: "pnpm hook file — executes during install" },
   { re: /(^|\/)bunfig\.toml$/, why: "bun config — can re-point the registry for the build" },
+
+  // Git configuration that changes what a DIFF shows, which is a different
+  // kind of danger from the ones above: it does not alter what the build does,
+  // it alters what a reviewer sees.
+  //
+  // `.gitattributes` inside the addon's own directory, containing `*.js -diff`,
+  // makes `git format-patch` emit `GIT binary patch` for every JavaScript file
+  // in the submission. The parsed patch then has no added lines, so the stage 5
+  // capability scan has nothing to read and the judgment queue comes back
+  // `(none)`. Verified 2026-11-27: a file containing `child_process`, `exec(`,
+  // `eval(` and a `wss://` exfiltration host produced `VERDICT: PASS — no items
+  // flagged`. The gates that read the tree rather than the patch are
+  // unaffected, so this hides the report rather than passing a gate — but the
+  // report is the reviewer's agenda, and a scan that silently reads nothing is
+  // worse than no scan.
+  { re: /(^|\/)\.gitattributes$/, why: "git attributes — can suppress the diff a reviewer reads" },
+  { re: /(^|\/)\.mailmap$/, why: "git mailmap — can rewrite the authorship a reviewer sees" },
 ];
 
 // The complete set of `scripts` keys an addon's package.json may declare.
@@ -204,7 +221,13 @@ export const SCAN_CATEGORIES = [
     patterns: [
       /\bchild_process\b/,
       /\bspawn(Sync)?\s*\(/,
-      /\bexec(File)?(Sync)?\s*\(/,
+      // `.exec(` on its own is RegExp.prototype.exec, which any scanner,
+      // validator or syntax highlighter uses — so a dotted bare `exec` is
+      // excluded and only the unqualified call is kept. The named variants
+      // have no RegExp counterpart and stay matchable either way; a
+      // `cp.execSync()` is still reached through child_process above.
+      /(?<![.\w$])exec\s*\(/,
+      /\bexec(File|Sync|FileSync)\s*\(/,
       /["']node:child_process["']/,
     ],
   },
@@ -255,4 +278,14 @@ export const SCAN_CATEGORIES = [
 ];
 
 // Extract bare hostnames from any URL literals, for the network judgment list.
-export const URL_RE = /\bhttps?:\/\/([^\s/"'`)]+)/g;
+//
+// `https?` alone is not the egress surface. A renderer reaches the network
+// over WebSocket as readily as over HTTP, and WebRTC names its relays with
+// `stun:`/`turn:` and no `//` at all. An add-on whose only two hosts are a
+// `wss://` relay and a STUN server therefore enumerated as contacting
+// nothing, while the reviewer was shown hosts harvested from its README —
+// a list that is worse than no list, because it reads as a complete one.
+// Match the capturing group that fired: m[1] for the authority forms,
+// m[2] for the scheme-only ones.
+export const URL_RE =
+  /\b(?:https?|wss?):\/\/([^\s/"'`)]+)|\b(?:stuns?|turns?):([^\s/"'`)]+)/g;
